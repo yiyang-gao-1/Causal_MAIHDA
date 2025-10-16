@@ -1,0 +1,468 @@
+---
+title: "Part I: ACIC 2022 Track 1 (Patient–Year) Data Structure + Merge and Readable Strata Guide"
+author: "Yiyang Gao"
+date: "`r format(Sys.time(), '%Y-%m-%d')`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    df_print: paged
+params:
+  data_dir: "/Users/constanceko/Desktop/MAIHDA_/ACIC_track1a_20220404"
+  replicate_id: "0052"
+header-includes:
+  - \usepackage{booktabs}
+  - \usepackage{longtable}
+  - \usepackage{array}
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message = FALSE, warning = FALSE)
+
+suppressPackageStartupMessages({
+  library(dplyr)
+  library(readr)
+  library(fs)
+  library(glue)
+  library(tidyr)
+  library(knitr)
+  library(tibble)
+  library(forcats)
+  library(stringr)
+})
+```
+
+# (1) The Four Core Files (Structure and Meaning)
+
+**Track 1** provides four CSVs per replicate (e.g., `xxxx = 0001`, public replicates often 0001–1200).
+
+```{r four-files-table}
+four_files <- tribble(
+  ~File, ~`Level (Uniqueness)`, ~`Key(s)`, ~`Main contents`,
+  "patient_xxxx.csv",        
+  "Patient (time-invariant)",      
+  "id.patient",                        
+  "One row per patient. Patient covariates V1–V5 and clinic ID id.practice.",
+  "patient_year_xxxx.csv",  
+  "Patient–Year (time-varying)",   
+  "id.patient, year",                  
+  "One row per patient per year. Outcome Y = monthly average medical expenditure for that year. Patients do not appear in all years by design.",
+  "practice_xxxx.csv",       
+  "Practice (time-invariant)",     
+  "id.practice",                       
+  "One row per practice. Practice covariates X1–X9.",
+  "practice_year_xxxx.csv",  
+  "Practice–Year (time-varying)",  
+  "id.practice, year",                 
+  "One row per practice per year: Z (treatment), post (post period), n.patients, practice-year aggregates (e.g., V1_avg–V5_avg), and a practice-level Y (drop this for Track-1 outcome modelling)."
+)
+
+kable(
+  four_files,
+  format = ifelse(knitr::is_latex_output(), "latex", "simple"),
+  booktabs = knitr::is_latex_output(),
+  align = "l",
+  caption = "Overview of ACIC Track 1 data files"
+)
+```
+
+```
+practice (X1–X9)
+  ---> practice_year (Z, post, n.patients, aggregated V*, practice Y [drop in Track 1])
+       ---> patient (V1–V5, id.practice)
+            ---> patient_year (patient Y, by year)
+> Practice-level Y exists but should be dropped for Track 1 outcome modelling.
+```
+
+This yields a **cluster-randomised** (practice-level assignment) longitudinal RCT.
+
+# (2) Data Structure Overview
+
+````{r preview-first-rows}
+# ---- File paths (use No.52 replicate as the example) ----
+patient <- read_csv("/Users/constanceko/Desktop/MAIHDA_/ACIC_track1a_20220404/patient/acic_patient_0052.csv")
+patient_year <- read_csv("/Users/constanceko/Desktop/MAIHDA_/ACIC_track1a_20220404/patient_year/acic_patient_year_0052.csv")
+practice <- read_csv("/Users/constanceko/Desktop/MAIHDA_/ACIC_track1a_20220404/practice/acic_practice_0052.csv")
+practice_year <- read_csv("/Users/constanceko/Desktop/MAIHDA_/ACIC_track1a_20220404/practice_year/acic_practice_year_0052.csv")
+
+names(patient)
+names(patient_year)
+names(practice)
+names(practice_year)
+````
+
+
+## (2.1) Patient-Level Data
+
+### patient_xxxx.csv (Time-Invariant)
+Each row represents **one patient** with time-invariant attributes:
+
+- **Patient ID**: Unique patient identifier
+- **Practice ID**: `id.practice` - which clinic the patient belongs to
+- **Patient Attributes (V1-V5)**:
+  - V1: severity (index)
+  - V2: comorbidity (index)
+  - V3: gender
+  - V4: deprivation (index)
+  - V5: race
+
+### patient_year_xxxx.csv (Time-Varying)
+Each row represents **one patient in one year**:
+
+- **Joint Unique ID**: `id.patient` + `year`
+- **Outcome Y**: Monthly average medical expenditure for that patient-year
+- **Note**: Patients do not appear in every year by design
+
+## (2.2) Practice-Level Data
+
+### practice_xxxx.csv (Time-Invariant)
+Each row represents **one practice/clinic** with time-invariant attributes:
+
+- **Practice ID**: Unique practice identifier
+- **Practice Attributes (X1-X9)**:
+  - urban/rural status
+  - region
+  - whether a teaching practice
+  - ownership
+  - urgent-care flag
+  - continuous metrics
+
+### practice_year_xxxx.csv (Time-Varying)
+Each row represents **one practice in one year**:
+
+- **Joint Unique ID**: `id.practice` + `year`
+- **treatment Variables**:
+  - `Z`: Cluster-level randomization (treatment assignment)
+  - `post`: Post-intervention indicator
+- **Practice Characteristics**:
+  - `n.patients`: Number of patients that year
+  - **Aggregated Composition Measures**:
+    - `V1_avg` - `V4_avg`: Average patient characteristics
+    - `V5_*_avg`: Insurance plan composition
+- **Practice-level Y**: Aggregated outcome at practice level
+
+## (2.3) Why Merging is Essential
+
+### Analysis Level Alignment
+
+Our analysis operates at the **patient-year level** because the outcome Y is measured for each patient in each year. To model this outcome correctly, each patient-year row must contain:
+
+1. **Patient-year outcome** `Y` (from `patient_year`)
+2. **Patient's time-invariant attributes** V1-V5 and clinic ID (from `patient`)
+3. **Clinic's time-invariant attributes** X1-X9 (from `practice`)
+4. **Clinic's time-varying treatment status and context** for that same year:
+   - `Z`: treatment assignment
+   - `post`: Post-intervention indicator
+   - `n.patients`: Patient volume
+   - Composition averages (from `practice_year`)
+
+### Key Reasons for Merging
+
+#### 1. treatment-Outcome Linkage
+- **Problem**: treatment is assigned at the **practice-year** level, while outcomes are at the **patient-year** level
+- **Solution**: Merging enables us to determine whether each patient-year was exposed to treatment
+- **Without merging**: Cannot establish the treatment exposure for individual patient outcomes
+
+#### 2. Multilevel Model Requirements
+- **Need**: Variables from both individual and cluster levels in the same long table
+- **Purpose**: 
+  - Specify random effects: `(1 | id.practice)`
+  - Form MAIHDA strata
+  - Account for hierarchical structure
+- **Result**: Proper multilevel/MAIHDA modeling capability
+
+#### 3. Time Alignment
+- **Challenge**: Practice characteristics (`post`, composition averages) vary by year
+- **Requirement**: Must match the patient's year exactly
+- **Solution**: Merge ensures temporal alignment between patient outcomes and practice context
+
+#### 4. Outcome Disambiguation
+- **Issue**: Two Y variables exist:
+  - Patient-level Y (individual expenditure)
+  - Practice-level Y (aggregated expenditure)
+- **Resolution**: After merging, drop practice-level Y and retain patient-level Y as the Track-1 outcome
+- **Benefit**: Avoids confusion between different definitions of Y
+
+
+
+## (2.4) Final Dataset Structure
+
+Each row represents a **patient-year** observation with:
+
+| Variable Type | Variables | Source | Level |
+|--------------|-----------|---------|--------|
+| Outcome | Y (patient expenditure) | patient_year | Patient-Year |
+| Patient Attributes | V1-V5 | patient | Patient |
+| Practice Attributes | X1-X9 | practice | Practice |
+| treatment | Z, post | practice_year | Practice-Year |
+| Practice Context | n.patients, V1_avg-V4_avg, V5_*_avg | practice_year | Practice-Year |
+
+## (2.5) Benefits of Merged Structure
+
+1. **Correct treatment Assignment**: Each patient-year knows its treatment exposure
+2. **Multilevel Analysis Ready**: All necessary variables at both levels in one table
+3. **Time-Consistent**: Practice context matches patient outcome timing
+4. **Clear Outcome Definition**: Single, unambiguous Y variable at patient level
+5. **MAIHDA Compatible**: Can form strata using both individual and cluster characteristics
+6. **Efficient Modeling**: Single dataset for all analyses, avoiding repeated joins
+
+
+The merged dataset enables:
+- Proper linkage between treatment assignment (practice-year) and outcomes (patient-year)
+- Multilevel modeling with variables from all necessary levels
+- Time-aligned analysis where practice context matches patient outcomes
+- Clear, unambiguous outcome definition at the patient level
+
+This structure is essential for valid causal inference in cluster-randomized trials with hierarchical data.
+
+
+
+# (3) Merge Rules
+
+1. **Add outcomes to patients:** join `patient` → `patient_year` by `id.patient`.
+2. **Attach practice covariates:** join with `practice` by `id.practice`.
+3. **Attach practice-year treatment and context:** join with `practice_year` by `c(id.practice, year)`.
+4. **Drop practice-level `Y`** to avoid ambiguity.
+
+```{r load-and-merge}
+# Merge all levels
+df <- patient_year %>%
+  # Add patient attributes
+  left_join(patient, by = "id.patient") %>%
+  # Add practice attributes
+  left_join(practice, by = "id.practice") %>%
+  # Add practice-year context
+  left_join(practice_year, by = c("id.practice", "year")) %>%
+  # Keep only patient-level Y
+  rename(Y_patient = Y.x,  # from patient_year
+         Y_practice = Y.y) %>%  # from practice_year
+  select(-Y_practice) %>%
+  # Rename for clarity
+  rename(Y = Y_patient)
+
+# Verify structure
+glimpse(df)
+
+# Check for successful merges
+summary(df)
+```
+
+# (4) Assign concrete meanings and recode (for readable strata)
+
+We now **assign clear interpretations** to abstract variables and **recode** where appropriate. These are **teaching assumptions** for readability.
+
+```{r recode-and-strata}
+
+qbreaks <- function(x, probs) {
+  # Quantile breaks with safeguards against duplicates/ties
+  b <- unique(quantile(x, probs = probs, na.rm = TRUE, names = FALSE))
+  if (length(b) < length(probs)) {
+    # Fall back to equally spaced breaks over the observed range
+    rng <- range(x, na.rm = TRUE)
+    # If all x are identical, widen by a tiny epsilon so cut() works
+    if (diff(rng) == 0) rng <- c(rng[1] - 1e-8, rng[2] + 1e-8)
+    b <- seq(rng[1], rng[2], length.out = length(probs))
+  }
+  b
+}
+
+names(df)
+
+df <- df %>%
+  dplyr::mutate(
+    # V1: baseline risk → quartiles
+    severity = cut(
+      V1,
+      breaks = qbreaks(V1, seq(0, 1, 0.25)),
+      include.lowest = TRUE, dig.lab = 6
+    ),
+    severity = forcats::fct_recode(
+      severity,
+      "severity: Low (Q1)"       = levels(severity)[1],
+      "severity: Medium (Q2)"    = levels(severity)[2],
+      "severity: High (Q3)"      = levels(severity)[3],
+      "severity: Very High (Q4)" = levels(severity)[4]
+    ),
+
+    # V2: expenditure grade → bands
+    comorbidity= dplyr::case_when(
+      V2 <= 1          ~ "Comorbidity: 0–1",
+      V2 %in% 2:3      ~ "Comorbidity: 2–3",
+      V2 %in% 4:5      ~ "Comorbidity: 4–5",
+      V2 >= 6          ~ "Comorbidity: 6–7",
+      TRUE             ~ NA_character_
+    ),
+
+    # V3: gender (0 = Male, 1 = Female)
+    gender = factor(dplyr::if_else(V3 == 1, "Female", "Male"),
+                 levels = c("Male","Female")),
+
+    # V4: deprivation index → tertiles
+    deprivation = cut(
+      V4,
+      breaks = qbreaks(V4, c(0, 1/3, 2/3, 1)),
+      include.lowest = TRUE, dig.lab = 6
+    ),
+    deprivation = forcats::fct_recode(
+      deprivation,
+      "Deprivation: Low"  = levels(deprivation)[1],
+      "Deprivation: Mid"  = levels(deprivation)[2],
+      "Deprivation: High" = levels(deprivation)[3]
+    ),
+
+    # V5: ethnicity labels
+    race = forcats::fct_recode(factor(V5),
+                        "White" = "A",
+                        "Asian" = "B",
+                        "Black" = "C")
+  ) %>%
+  # practice-side readable labels
+  dplyr::mutate(
+    rurality = factor(dplyr::if_else(X1 == 1, "Rural", "Urban"),
+                      levels = c("Urban","Rural")),
+    region   = forcats::fct_recode(factor(X2),
+                          "region: A" = "A",
+                          "region: B" = "B",
+                          "region: C" = "C"),
+    teaching = factor(dplyr::if_else(X3 == 1, "Yes", "No"),
+                      levels = c("No","Yes"),
+                      labels = c("Teaching practice: No","Teaching practice: Yes")),
+    ownership    = forcats::fct_recode(factor(X4),
+                          "Ownership: A" = "A",
+                          "Ownership: B" = "B",
+                          "Ownership: C" = "C"),
+    urgentcare   = factor(dplyr::if_else(X5 == 1, "Yes", "No"),
+                      levels = c("No","Yes"),
+                      labels = c("Urgent care: No","Urgent care: Yes"))
+  )
+
+
+library(forcats)
+df <- df %>%
+  mutate(
+    # Gender — keep Male as reference
+    gender = fct_relevel(gender, "Male", "Female"),
+    # Low deprivation as reference
+    deprivation = fct_relevel(deprivation, "Deprivation: Low", "Deprivation: Mid", "Deprivation: High"),
+    # Low Severity as reference
+    severity = fct_relevel(severity,
+      "severity: Low (Q1)", "severity: Medium (Q2)", "severity: High (Q3)", "severity: Very High (Q4)"
+    ),
+    # Race - keep White as reference
+    race = fct_relevel(race, "White", "Asian", "Black"),
+    # Comorbidity - make it a factor with an explicit ordered reference
+    comorbidity = factor(
+      comorbidity,
+      levels = c("Comorbidity: 0–1", "Comorbidity: 2–3", "Comorbidity: 4–5", "Comorbidity: 6–7")
+    )
+  )
+
+# Construct human-readable strata (patient-side only)
+df <- df %>%
+  dplyr::mutate(
+    strata_label = interaction(gender, severity, comorbidity,
+                               deprivation, race,
+                               sep = " | ", drop = TRUE) %>%
+      forcats::fct_drop()
+  )
+
+# Only keep variables we need
+df <- df %>%
+  dplyr::select(id.patient,
+         year,
+         Y,
+         id.practice,
+         Z,
+         post,
+         severity: strata_label) %>%
+  dplyr::rename(treatment = Z,
+         expenditure = Y)
+
+# Quick checks
+df %>%
+  dplyr::select(id.patient, year, treatment, expenditure, post, gender, severity,
+                comorbidity, deprivation, race, strata_label) %>%
+  head(8) %>% print(n = 8)
+
+table(df$treatment, df$year)
+table(df$treatment, df$post)
+
+```
+
+
+## (4.1) treatment & Year
+
+| treatment | Meaning                       | Year 1 | Year 2 | Year 3 | Year 4 |           
+| --------- | ----------------------------- | ------ | ------ | ------ | ------ |  -------------------------- |
+| 0         | Control (untreated practices) | 196 k  | 196 k  | 196 k  | 195 k  |  
+| 1         | Treated practices             | 119 k  | 119 k  | 119 k  | 119 k  | 
+
+**Interpretation**
+
+* Roughly **60 % of patient-years** are from control practices (`treatment = 0`) and **40 %** from treated ones (`treatment = 1`).
+* The counts are almost identical across years, showing that the **same practices (and their patients)** are followed across four years.
+* This confirms that **randomisation occurred at the practice level** and remained **balanced and stable over time**, consistent with the ACIC Track 1 cluster-randomised design.
+
+
+
+## (4.2) treatment & Post
+
+| treatment | Meaning           | Pre-intervention (`post = 0`) | Post-intervention (`post = 1`) |
+| --------- | ----------------- | ----------------------------- | ------------------------------ |
+| 0         | Control practices | 392 409                       | 392 315                        |
+| 1         | Treated practices | 239 108                       | 238 897                        |
+
+**Interpretation**
+
+* Within each treatment arm, **pre- and post-period counts are nearly identical**, confirming that:
+
+  * Each practice (and its patients) contributes observations to both the pre and post periods.
+  * There is **no major attrition or missing block** after treatment assignment.
+
+* `post` is a **time indicator** (e.g., years 1–2 = pre, 3–4 = post).
+* The balanced panel supports a **difference-in-differences (DiD)** or **longitudinal MAIHDA** approach, since every unit has both pre/post observations and a treatment indicator.
+
+
+
+
+# (5) Quick descriptive: strata size and mean outcome
+
+```{r strata-descriptives}
+# Summarise strata sizes and mean outcome 
+# For each strata, we return strata size, number of patients, number of practices, mean_Y, and	mean_Z
+strata_summary <- df %>%
+  group_by(strata_label) %>%
+  summarise(
+    n = n(),
+    patients = n_distinct(id.patient),
+    practices = n_distinct(id.practice),
+    mean_expenditure = mean(expenditure, na.rm = TRUE),
+    mean_treatment = mean(treatment, na.rm = TRUE)
+  ) %>%
+  arrange(desc(n)) %>%
+  rename(observations = n)
+
+strata_summary
+
+
+# Only show the top 15 by size
+kable(
+  head(strata_summary, 15),
+  format = ifelse(knitr::is_latex_output(), "latex", "simple"),
+  booktabs = knitr::is_latex_output(),
+  caption = "Top strata by size (n), with mean outcome and exposure rate"
+)
+
+# save the analysis-ready data for future use
+write.csv(df, "/Users/constanceko/Desktop/MAIHDA_/replicate_52.csv")
+```
+
+
+**Common pitfalls**
+
+* Do **not** mix the two `Y`s — use **patient `Y`** for Track-1.
+* Join keys must align: `id.patient`, `id.practice`, `year`.
+* Patients do not appear in every year; this is **by design** (ageing in/out, death), not missingness.
+
+

@@ -1,0 +1,1223 @@
+---
+title: "Conventional MAIHDA — ACIC 2022 Track 1"
+author: "Yiyang Gao"
+date: "`r format(Sys.Date())`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    df_print: paged
+  pdf_document:
+    latex_engine: xelatex
+    toc: true
+    toc_depth: 3
+    number_sections: true
+header-includes:
+  - \usepackage{booktabs}
+  - \usepackage{longtable}
+  - \usepackage{array}
+  - \microtypesetup{stretch=10}
+---
+
+
+```{r setup, include=FALSE}
+# Turn off code echo in the knitted report 
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+
+# Load libraries
+suppressPackageStartupMessages({
+  library(data.table)    # fast file reading
+  library(dplyr)         # data manipulation verbs
+  library(tidyr)         # tidying helpers
+  library(forcats)       # factor tools
+  library(ggplot2)       # plotting
+  library(lme4)          # multilevel models
+  library(glue)          # string templating
+  library(broom.mixed)   # model tidiers
+  library(knitr)         # tables
+  library(stringr)       # string helpers
+  library(readr)
+})
+
+```
+
+# (1) Load and merge ACIC Track 1
+
+## (1.1) Aim of this session
+
+- **Intersectional strata formation**
+  - Created by crossing: gender × risk × comorbidity × deprivation × plan
+  
+- **Between-stratum variation quantification**
+  - Measured using VPC (Variance Partition Coefficient)
+  
+- **Treatment heterogeneity modeling** (bridging conventional and causal MAIHDA)
+  - Implemented through random slope of D_centre
+
+
+## (1.2) Creating the Treatment Exposure Variable (D)
+
+In cluster-randomized trials like ACIC 2022, understanding the difference between treatment **assignment** and treatment **exposure** is crucial for causal inference. Here, we create a new variable, *D*, that captures actual exposure to the intervention.
+
+### Why D is Essential: Assignment vs. Exposure
+
+The ACIC data contains two key variables:
+
+| Practice-level variable | Meaning                                                    |
+|------------------------|-------------------------------------------------------------|
+| Treatment (Z)          | Treatment assignment (1 = treated practice, 0 = control)    |
+| post                   | Post-intervention period indicator (1 = after, 0 = before)  |
+
+**The critical insight**: Treatment is assigned at the practice level, but the intervention only begins in Year 3. This means:
+- Practices assigned to treatment (Z=1) have patients in ALL four years
+- But these patients only receive the intervention in Years 3-4 (when post=1)
+- Patients in Years 1-2 are in treated practices but **not yet receiving treatment**
+
+### Defining D: Actual Treatment Exposure
+
+**D = Treatment × post** captures whether a patient-year observation actually received the intervention:
+
+- **D = 1** when a practice was assigned to treatment AND the time period is post-intervention
+- **D = 0** otherwise (control practices OR pre-intervention period)
+
+D answers the fundamental question: *"Did this patient-year fall in a treated practice AFTER the intervention began?"*
+
+### Why Not Just Use Treatment (Z)?
+
+Using Treatment (Z) alone would be incorrect because:
+
+1. **Z doesn't account for timing**: Z=1 for treated practices in ALL years, including Years 1-2 when no intervention has occurred yet
+
+2. **Mixing pre and post observations**: A model using only Z would compare:
+   - ALL observations from treated practices (both pre and post)
+   - vs. ALL observations from control practices (both pre and post)
+   
+This would estimate baseline differences between practices, NOT the causal effect of the intervention
+
+3. **Violates temporal logic**: Treatment can only affect outcomes after it's implemented. Using Z alone treats pre-intervention observations in treated practices as if they were receiving treatment
+
+### The Difference-in-Differences (DiD) Framework
+
+D is the key variable for DiD analysis, which is the appropriate causal identification strategy here:
+
+| Period | Control Practices (Z=0) | Treated Practices (Z=1) |
+|--------|-------------------------|-------------------------|
+| Pre (post=0, Years 1-2) | D = 0 (never treated) | D = 0 (not yet treated) |
+| Post (post=1, Years 3-4) | D = 0 (never treated) | **D = 1 (TREATED)** |
+
+In DiD terms:
+
+| Variable      | DiD meaning                              | Level              |
+|---------------|------------------------------------------|--------------------|
+| Treatment (Z) | Treatment group indicator                | Practice (time-invariant) |
+| post          | Post-period indicator                    | Time               |
+| D = Z × post  | Actual exposure (DiD interaction)        | Practice-year      |
+
+The coefficient on D estimates the Average Treatment Effect on the Treated (ATT) - the causal effect of the intervention.
+
+### Concrete Example
+
+| id.practice | Year | Z (Assignment) | post | D (Exposure) | Interpretation |
+|-------------|------|---------------|------|--------------|----------------|
+| Practice 1  | 1    | 0            | 0    | 0            | Control, pre-period |
+| Practice 1  | 2    | 0            | 0    | 0            | Control, pre-period |
+| Practice 1  | 3    | 0            | 1    | 0            | Control, post-period |
+| Practice 1  | 4    | 0            | 1    | 0            | Control, post-period |
+| Practice 2  | 1    | 1            | 0    | 0            | Treated practice, but intervention not started |
+| Practice 2  | 2    | 1            | 0    | 0            | Treated practice, but intervention not started |
+| Practice 2  | 3    | 1            | 1    | **1**        | **Receiving intervention** |
+| Practice 2  | 4    | 1            | 1    | **1**        | **Receiving intervention** |
+
+### Implications for MAIHDA Models
+
+When fitting MAIHDA models to estimate treatment effects:
+
+**Incorrect specification (using only Z):**
+
+```r
+m_wrong <- lmer(expenditure ~ Treatment + (1 | strata_label), data = df, REML = TRUE)
+```
+
+This would mix pre- and post-period observations, failing to identify the causal effect.
+
+**Correct specifications using D:**
+
+Basic MAIHDA with treatment effect:
+
+```r
+m_basic <- lmer(expenditure ~ D + (1 | strata_label), data = df, REML = TRUE)
+```
+
+Mean effect models with interaction terms
+
+```r
+m_gender <- lmer(expenditure ~ D*gender + severity + comorbidity + deprivation + race +
+             (1 | strata_label), data = df, REML = TRUE)
+```
+
+```r
+m_risk <- lmer(expenditure ~ D*Risk_bank + gender + comorbidity + deprivation + race +
+              (1 | strata_label), data = df, REML = TRUE)
+```
+
+```r
+m_comorbidity <- lmer(expenditure ~ D*comorbidity + gender + severity + deprivation +                           race + (1 | strata_label), data = df, REML = TRUE)
+```
+
+```r
+m_insurance <- lmer(expenditure ~ D*race + gender + severity + deprivation +                             comorbidity + (1 | strata_label), data = df, REML = TRUE)
+```
+
+
+MAIHDA random slopes extension and interactions
+```r
+m_multiplicative <- lmer(expenditure ~ D* (race + gender + severity + deprivation +                             comorbidity) + (1 + D| strata_label), data = df, REML = TRUE)
+```
+
+
+### Summary
+
+D is essential because it:
+1. **Identifies actual exposure**: Distinguishes between "assigned to treatment" and "receiving treatment"
+2. **Respects temporal logic**: Treatment can only affect outcomes after implementation
+3. **Enables causal inference**: Provides the correct counterfactual comparison for estimating treatment effects
+4. **Supports MAIHDA goals**: Allows examination of how treatment effects vary across intersectional strata
+
+Without D, we cannot distinguish between patients in treated practices before intervention (who haven't received treatment) and after intervention (who have received treatment). This distinction is fundamental for valid causal inference in longitudinal intervention studies.
+
+
+# (2) Recode to readable, teaching-friendly labels (strata inputs)
+
+```{r load-merge}
+df <- read_csv("/Users/constanceko/Desktop/MAIHDA_/replicate_52.csv")
+names(df)
+
+df <- df %>%
+  mutate(D = treatment*post)
+
+table(df$D)
+names(df)
+
+df$gender   <- forcats::fct_relevel(df$gender, "Male", "Female")
+df$race     <- forcats::fct_relevel(df$race, "White", "Asian", "Black")
+df$severity <- forcats::fct_relevel(df$severity, "severity: Low (Q1)", 
+                                    "severity: Medium (Q2)", 
+                                    "severity: High (Q3)",
+                                    "severity: Very High (Q4)")
+df$comorbidity <- forcats::fct_relevel(df$comorbidity, "Comorbidity: 0–1", 
+                                    "Comorbidity: 2–3", 
+                                    "Comorbidity: 4–5",
+                                    "Comorbidity: 6–7")
+df$deprivation <- forcats::fct_relevel(df$deprivation, 
+                                    "Deprivation: Low", 
+                                    "Deprivation: Mid",
+                                    "Deprivation: High")
+
+```
+
+# (3) Descriptives
+
+```{r descriptives}
+# Table: observed stratum means with sizes
+# n_observation = Number of observations in stratum j
+# mean_Y = Mean outcome (monthly medical expenditure) in stratum j
+obs <- df %>%
+  group_by(strata_label, gender, comorbidity, deprivation, severity, race) %>%
+  summarise(n_obs= n(), mean_Y = mean(expenditure, na.rm = TRUE), .groups = "drop") %>%
+  arrange(mean_Y)
+head(obs)
+
+
+# Tables: top five and bottom five strata by observed mean Y
+bottom5 <- obs %>% slice_head(n = 5)  %>% mutate(rank = row_number())
+top5    <- obs %>% slice_tail(n = 5)  %>% mutate(rank = nrow(obs) - n() + row_number())
+
+fmt_tb <- function(x, ttl){
+  knitr::kable(
+    x %>% select(strata_label, gender, comorbidity, deprivation, severity, race, `size`=n_obs, mean_Y = mean_Y),
+    format   = ifelse(knitr::is_latex_output(), "latex", "simple"),
+    booktabs = knitr::is_latex_output(),
+    caption  = ttl,
+    align    = "lllllllrr"
+  )
+}
+fmt_tb(top5,    "Observed stratum means — Top five")
+fmt_tb(bottom5, "Observed stratum means — Bottom five")
+
+# Plot: individuals and observed stratum means by stratum id
+stratum_means <- obs %>% select(strata_label, mean_Y)
+ggplot() +
+  geom_point(data = df, aes(x = strata_label, y = expenditure), alpha = 0.15, size = 0.7) +
+  geom_point(data = stratum_means, aes(x = strata_label, y = mean_Y), size = 0.9) +
+  labs(title = "Individual expenditure and observed mean expenditure , by stratum",
+       x = "Stratum id", y = "Monthly Medical expenditure ($)") +
+  theme_minimal()
+
+# Plot: mean Y by each stratum characteristic (bars)
+char_vars_wanted <- c("gender", "comorbidity", "deprivation", "severity", "race")
+char_vars <- intersect(char_vars_wanted, names(df))  # keep only those present
+
+
+# build the long summary: mean Y by var/level (+ counts for reference)
+char_means <- df %>%
+  dplyr::select(dplyr::all_of(char_vars), expenditure) %>%
+  tidyr::pivot_longer(cols = dplyr::all_of(char_vars),
+                      names_to = "var", values_to = "level") %>%
+  dplyr::filter(!is.na(level)) %>%
+  dplyr::group_by(var, level) %>%
+  dplyr::summarise(mean_Y = mean(expenditure, na.rm = TRUE),
+                   n = dplyr::n(),
+                   .groups = "drop")
+
+char_means
+# overall mean line for the plots
+overall_mean <- mean(df$expenditure, na.rm = TRUE)
+
+# order levels within each facet by meanY (clean facet-wise ordering)
+char_means <- char_means %>%
+  group_by(var) %>%
+  mutate(level = forcats::fct_reorder(level, mean_Y)) %>%
+  ungroup()
+names(char_means)
+
+ggplot(char_means, aes(x = level, y = mean_Y)) +
+  geom_col() +
+  geom_hline(yintercept = overall_mean, linetype = 3) +
+  facet_wrap(~ var, scales = "free_x") +
+  labs(title = "Mean Y by stratum characteristic",
+       x = NULL, y = "Mean Y") +
+  coord_flip() +
+  theme_minimal()
+
+
+
+# Plot: observed stratum mean against stratum size (with unweighted and weighted horizontal lines)
+unweighted_mean <- mean(obs$mean_Y)
+weighted_mean   <- with(obs, stats::weighted.mean(mean_Y, w = n_obs))
+
+ggplot(obs, aes(x = n_obs, y = mean_Y)) +
+  geom_point(alpha = 0.4) +
+  geom_hline(yintercept = unweighted_mean, linetype = 2) +
+  geom_hline(yintercept = weighted_mean,   linetype = 3) +
+  labs(title = "Observed stratum mean vs stratum size",
+       x = "Stratum size (n_j)", y = "Observed mean Y") +
+  theme_minimal()
+
+
+```
+
+# (4) Model 0: only random intercepts for strata
+
+```{r model_0}
+# Model 0: Empty (null) MAIHDA, no fixed predictors, random intercepts only
+m_0 <- lmer(expenditure ~ 1 + 
+              (1 | strata_label),  # MAIHDA strata
+              data = df, REML = TRUE)
+summary(m_0)
+```
+
+
+This baseline model partitions total variation in **expenditure** into two components:
+
+1. **Between-strata variance** (differences in mean expenditure across intersectional groups, such as combinations of gender × race × deprivation × severity × comorbidity).
+2. **Within-strata variance** (differences among individuals within the same intersectional group).
+
+#### Model Summary
+
+| Component                       | Variance  | Std. Dev. |
+| ------------------------------- | --------- | --------- |
+| Between strata (`u₀ⱼ`)          | 187,216   | 432.7     |
+| Within strata (residual, `εᵢⱼ`) | 6,224,331 | 2,494.9   |
+
+* **Number of observations:** 1,262,729
+* **Number of strata:** 288
+* **Grand mean (fixed intercept):** $1,154.56 (SE = 25.81, *t* = 44.7)
+
+#### Interpretation
+
+* The estimated mean annual expenditure across all individuals is approximately **$1,155**.
+* The **between-strata variance** (187 k) reflects modest differences in mean expenditure between intersectional groups, while the **within-strata variance** (≈ 6.22 million) is much larger, showing that most variation occurs **within**, not between, strata.
+* The **Variance Partition Coefficient (VPC)** is
+  [
+  \text{VPC} = \frac{187{,}216}{187{,}216 + 6{,}224{,}331} \approx 0.029,
+  ]
+  meaning that roughly **2.9 % of the total variance** in expenditure lies between strata.
+* This indicates that intersectional group membership explains only a small portion of total variability in expenditure, while individual-level factors account for the vast majority.
+
+#### Substantive note
+
+This "empty" MAIHDA model serves as the baseline for later models that introduce individual and contextual characteristics. Comparing the reduction in between-strata variance in subsequent models will show how much of these group-level differences can be statistically explained by the main and interaction effects of demographic and clinical variables.
+
+
+# (5) Model 1: cluster- and panel-aware baseline model
+
+```{r model_1}
+
+# check id.patient is globally unique or not (do they change practice)
+n_global  <- n_distinct(df$id.patient)
+n_nested  <- n_distinct(interaction(df$id.practice, df$id.patient, drop = TRUE))
+c(n_global_ids = n_global, n_patient_within_practice = n_nested) # equally the same, so unique
+
+
+m_1 <- lmer(
+  expenditure ~ 1 +
+    (1 | id.practice) +  # practice-level clustering
+    (1 | id.patient) +   # repeated measures per patient
+    (1 | strata_label),  # intersectional strata
+  data = df, REML = TRUE
+)
+
+summary(m_1)
+```
+
+
+#### Model summary
+
+|                Random effect (level) |  Variance | Std. Dev. |
+| -----------------------------------: | --------: | --------: |
+|               Patient (`id.patient`) | 3,288,339 |   1,813.4 |
+|             Practice (`id.practice`) |     4,456 |      66.8 |
+|              Strata (`strata_label`) |   205,361 |     453.2 |
+| Residual (within-patient, over time) | 3,741,810 |   1,934.4 |
+
+* **Intercept (overall mean)** = $ 1,226.1 (SE = 27.6, *t* = 44.4)
+* **Observations** = 1,262,729
+* **Patients** = 407,879
+* **Practices** = 500
+* **Strata** = 288
+
+---
+
+#### Interpretation
+
+* The estimated **average expenditure** across all observations is approximately **$ 1,226 per patient-year**.
+* Variance decomposition shows that expenditure varies mainly between **patients**, with smaller differences between **strata** and **practices**.
+* Approximate **variance partition coefficients (VPCs)** are:
+
+[
+\text{Total variance} =
+3{,}288{,}339_{\text{patient}} +
+4{,}456_{\text{practice}} +
+205{,}361_{\text{strata}} +
+3{,}741{,}810_{\text{residual}}
+= 7{,}239{,}966
+]
+
+[
+\begin{aligned}
+\text{VPC}*{\text{patient}}  &= 3{,}288{,}339 / 7{,}239{,}966 \approx 0.454,\
+\text{VPC}*{\text{practice}} &= 4{,}456 / 7{,}239{,}966 \approx 0.001,\
+\text{VPC}_{\text{strata}}   &= 205{,}361 / 7{,}239{,}966 \approx 0.028.
+\end{aligned}
+]
+
+Hence, approximately **45 %** of total variance is between patients, **2.8 %** between intersectional strata, and **0.1 %** between practices.
+The remaining **52 %** reflects within-patient (year-to-year) variability.
+
+---
+
+#### Substantive interpretation
+
+This model accounts for the hierarchical and longitudinal structure of the data:
+
+| Level                            | Description                                                                         | Source of variance |
+| -------------------------------- | ----------------------------------------------------------------------------------- | ------------------ |
+| **Level 1:** Year within patient | Year-specific expenditure fluctuation                                               | Residual           |
+| **Level 2:** Patient             | Stable patient-specific spending tendencies                                         | `id.patient`       |
+| **Level 3:** Practice            | Differences between practices (organisation, resources)                             | `id.practice`      |
+| **Level 4:** Stratum             | Intersectional group effects (gender × race × deprivation × severity × comorbidity) | `strata_label`     |
+
+Key findings:
+
+* **Between-patient differences dominate** the variation, indicating strong individual-level heterogeneity in healthcare spending.
+* **Intersectional strata differences remain modest** (~3 %), showing limited but non-trivial disparities across combined social groups.
+* **Practice-level variation is minimal**, suggesting organisational differences have little impact on overall expenditure once patient heterogeneity is considered.
+
+---
+
+#### Summary
+
+Model 1 serves as a **cluster- and patient-aware empty MAIHDA baseline**.
+It appropriately models the repeated-measures design and provides a benchmark for later models that will add treatment, time, and interaction effects to quantify how much of the remaining variance can be explained by observable factors.
+
+
+# (6) Model 2: add main effects (no treatment)
+```{r model_2}
+# Model 2: add main effects of the stratum characteristics
+m_2 <- lmer(expenditure ~ gender + race + deprivation + severity + comorbidity +
+              (1 | id.practice) + 
+              (1 | id.patient) + 
+              (1 | strata_label),
+            data = df, REML = TRUE)
+summary(m_2)
+
+```
+
+#### Model summary
+
+| Random effect (level)     |  Variance | Std. Dev. |
+| :------------------------ | --------: | --------: |
+| Patient (`id.patient`)    | 3 286 768 |   1 812.9 |
+| Practice (`id.practice`)  |     4 382 |      66.2 |
+| Strata (`strata_label`)   |       463 |      21.5 |
+| Residual (within-patient) | 3 742 323 |   1 934.5 |
+
+* **Intercept (average expenditure):** $ 656.8 (SE = 13.8, *t* = 47.6)
+* **Observations:** 1 262 729 **Patients:** 407 879 **Practices:** 500 **Strata:** 288
+
+---
+
+#### Fixed-effect interpretation
+
+Reference categories: **Male**, **White**, **Deprivation: Low**, **severity: Low (Q1)**, **Comorbidity: 0–1**.
+
+| Predictor                   | Estimate ($) | t value | Interpretation (vs reference)                                                                               |
+| :-------------------------- | -----------: | :-----: | :---------------------------------------------------------------------------------------------------------- |
+| **Intercept**               |        656.8 |   47.6  | Mean expenditure for the reference group (Male × White × Low deprivation × Low severity × Comorbidity 0–1). |
+| **Gender (Female)**         |          +78 |   9.7   | Women spend ≈ $78 more than men.                                                                            |
+| **Race (Asian)**            |          +87 |   9.2   | Asian patients spend ≈ $87 more than White.                                                                 |
+| **Race (Black)**            |          +96 |   7.9   | Black patients spend ≈ $96 more than White.                                                                 |
+| **Deprivation (Mid)**       |         +492 |   51.8  | Mid-deprived spend ≈ $490 more than low-deprived.                                                           |
+| **Deprivation (High)**      |       +1 105 |  106.6  | Most-deprived spend ≈ $1.1 k more than low-deprived.                                                        |
+| **Severity (Medium Q2)**    |          −34 |   −3.1  | Medium-severity patients spend ≈ $34 less than low-severity (Q1).                                           |
+| **Severity (High Q3)**      |          −61 |   −5.4  | High-severity (Q3) spend ≈ $61 less than low-severity (Q1).                                                 |
+| **Severity (Very High Q4)** |         −106 |   −9.4  | Very-high-severity patients spend ≈ $106 less than low-severity (Q1).                                       |
+| **Comorbidity (2–3)**       |          −24 |   −2.3  | Slightly lower expenditure than 0–1 conditions.                                                             |
+| **Comorbidity (4–5)**       |          −17 |   −1.5  | Not significant.                                                                                            |
+| **Comorbidity (6–7)**       |          −12 |   −0.8  | Not significant.                                                                                            |
+
+---
+
+#### Variance decomposition
+
+| Level     |    Variance |   VPC (%) |
+| :-------- | ----------: | --------: |
+| Patient   |   3 286 768 |    ≈ 45 % |
+| Practice  |       4 382 |  ≈ 0.06 % |
+| Strata    |         463 | ≈ 0.007 % |
+| Residual  |   3 742 323 |    ≈ 55 % |
+| **Total** | ≈ 7 033 936 |     100 % |
+
+**Interpretation:**
+Between-strata variance dropped from ≈ 205 k (Model 1) to ≈ 463 (Model 2), a **reduction of ≈ 99.8 %**, showing that nearly all intersectional inequalities observed in the empty model are captured by additive main effects of gender, race, deprivation, severity, and comorbidity.
+Patient-level heterogeneity remains the dominant component, while practice-level variance is negligible.
+
+---
+
+#### Substantive interpretation
+
+Model 2 represents the **main-effects MAIHDA** stage: it examines how much variation in expenditure across intersectional strata is explained by additive demographic and clinical characteristics.
+
+Key insights:
+
+1. **Socio-economic gradient:** Expenditure rises sharply with deprivation. Most-deprived patients spend about $1 100 more than least-deprived, consistent with greater health need or service use.
+2. **Gender and ethnicity:** Women, Asian, and Black patients all show higher expenditures relative to men or White patients, suggesting social-patterned utilisation differences.
+3. **Severity and comorbidity:** Once other factors are controlled, higher severity and comorbidity are only weakly associated with greater spending; in fact, the sign reverses, implying coding differences or ceiling effects in the severity index.
+4. **Variance explanation:** Intersectional strata differences almost vanish, indicating that group disparities are largely additive rather than intersectional in this dataset.
+
+---
+
+#### Summary
+
+| Model       | Key pattern                                                           | Between-strata variance |
+| :---------- | :-------------------------------------------------------------------- | ----------------------: |
+| Model 1     | Empty (cluster + patient + strata)                                    |                 ≈ 205 k |
+| **Model 2** | + Main effects (gender + race + deprivation + severity + comorbidity) |    ≈ 463 (**↓ 99.8 %**) |
+
+
+---
+
+# (7) Model 3: add fixed treatment term *D*
+
+```{r model_3}
+m_3 <- lmer(
+  expenditure ~ gender + race + deprivation + severity + comorbidity + D +
+    (1 | id.practice) +
+    (1 | id.patient) +
+    (1 | strata_label),
+  data = df, REML = TRUE)
+summary(m_3)
+```
+
+
+
+#### Model summary
+
+| Random effect (level)     |  Variance | Std. Dev. |
+| :------------------------ | --------: | --------: |
+| Patient (`id.patient`)    | 3 380 373 |   1 838.6 |
+| Practice (`id.practice`)  |    15 377 |     124.0 |
+| Strata (`strata_label`)   |       442 |      21.0 |
+| Residual (within-patient) | 3 679 935 |   1 918.3 |
+
+* **Intercept (average expenditure)** = £ 552.97 (SE = 14.74, *t* = 37.5)
+* **Observations:** 1 262 729 **Patients:** 407 879 **Practices:** 500 **Strata:** 288
+
+---
+
+#### Fixed-effect interpretation
+
+Reference categories: **Male**, **White**, **Deprivation: Low**, **severity: Low (Q1)**, **Comorbidity: 0–1**.
+
+| Predictor                   | Estimate (£) | *t* value | Interpretation (vs reference)                                                                                                       |
+| :-------------------------- | -----------: | :-------: | :---------------------------------------------------------------------------------------------------------------------------------- |
+| **Intercept**               |          553 |    37.5   | Mean expenditure for baseline (Male × White × Low deprivation × Low severity × Comorbidity 0–1) in control/pre-treatment condition. |
+| **Gender (Female)**         |          +76 |    9.4    | Women spend ≈ £76 more than men.                                                                                                    |
+| **Race (Asian)**            |          +87 |    9.0    | Asian patients spend ≈ £87 more than White.                                                                                         |
+| **Race (Black)**            |          +94 |    7.6    | Black patients spend ≈ £94 more than White.                                                                                         |
+| **Deprivation (Mid)**       |         +494 |    51.9   | Mid-deprived spend ≈ £490 more than low-deprived.                                                                                   |
+| **Deprivation (High)**      |       +1 114 |   106.6   | Most-deprived spend ≈ £1.1 k more than low-deprived.                                                                                |
+| **Severity (Medium Q2)**    |          −31 |    −2.8   | Medium-severity spend ≈ £31 less than low-severity (Q1).                                                                            |
+| **Severity (High Q3)**      |          −58 |    −5.2   | High-severity spend ≈ £58 less than low-severity.                                                                                   |
+| **Severity (Very High Q4)** |         −103 |    −9.1   | Very-high-severity spend ≈ £103 less than low-severity.                                                                             |
+| **Comorbidity (2–3)**       |          −23 |    −2.3   | Slightly lower spending than 0–1 conditions.                                                                                        |
+| **Comorbidity (4–5)**       |          −17 |    −1.5   | Not significant.                                                                                                                    |
+| **Comorbidity (6–7)**       |          −12 |    −0.8   | Not significant.                                                                                                                    |
+| **Treatment (D)**           |         +517 |    90.6   | Average treatment effect: on average, expenditure is ≈ £517 higher under treatment (practice-level intervention × post period).     |
+
+---
+
+#### Variance decomposition
+
+| Level     |    Variance |   VPC (%) |
+| :-------- | ----------: | --------: |
+| Patient   |   3 380 373 |    ≈ 46 % |
+| Practice  |      15 377 |   ≈ 0.2 % |
+| Strata    |         442 | ≈ 0.006 % |
+| Residual  |   3 679 935 |    ≈ 53 % |
+| **Total** | ≈ 7 076 127 |     100 % |
+
+**Interpretation:**
+Compared with Model 2, between-practice variance increased (from ≈ 4 k → 15 k), while between-strata variance remains tiny. The treatment variable (`D`) absorbs some within- and between-practice differences, indicating that the intervention explains a non-trivial share of the remaining variance.
+
+---
+
+#### Substantive interpretation
+
+Model 3 extends the main-effects MAIHDA by introducing the **average treatment effect**. This captures the overall impact of the practice-level intervention between the pre- and post-periods across all patients and strata.
+
+Key points:
+
+1. **Treatment effect:** The coefficient for `D` (+£517) indicates that, on average, patients in treated practices after the intervention spent about £500 more per year than their counterparts in control/pre conditions.
+2. **Social patterning:** The direction and magnitude of gender, race, and deprivation effects remain similar to Model 2, showing these inequalities persist independent of treatment status.
+3. **Variance structure:** Most variation still occurs at the patient level (~46 %), but the increase in practice-level variance suggests some practice-specific differences in average outcomes post-intervention.
+4. **Between-strata inequality:** Remains minimal (< 0.01 %), confirming that intersectional group differences are explained by additive main effects rather than unique interactions.
+
+---
+
+#### Summary
+
+| Model       | Key change                 | Main finding                                                                                          |
+| :---------- | :------------------------- | :---------------------------------------------------------------------------------------------------- |
+| Model 2     | Additive main effects only | Structural socio-demographic and clinical factors explain nearly all between-strata variation.        |
+| **Model 3** | + Treatment (main ATE)     | Treatment increases average expenditure by ≈ £500 and introduces slight practice-level heterogeneity. |
+
+
+# (8) Model 4: add random slope for strata
+```{r model_4}
+m_4 <- lmer(
+  expenditure ~ gender + race + deprivation + severity + comorbidity + D +
+    (1 | id.practice) +
+    (1 | id.patient) +
+    (1 + D| strata_label),
+  data = df, REML = TRUE)
+summary(m_4)
+```
+
+
+#### Model summary
+
+| Random effect (level)                   |  Variance | Std. Dev. | Corr |
+| :-------------------------------------- | --------: | --------: | :--: |
+| Patient (`id.patient`)                  | 3 413 040 |     1 847 |   –  |
+| Practice (`id.practice`)                |    13 866 |     117.8 |   –  |
+| Strata (`strata_label`) Intercept       |       ≈ 0 |       0.0 |   –  |
+| Strata (`strata_label`) Treatment (`D`) |    90 449 |     300.7 |   –  |
+| Residual                                | 3 657 502 |     1 912 |   –  |
+
+* **Intercept (mean expenditure)** = £ 614.8 (SE = 13.8, *t* = 44.5)
+* **Observations:** 1 262 729 **Patients:** 407 879 **Practices:** 500 **Strata:** 288
+* **Convergence:** OK (but *boundary / singular fit* → some random-effect variances near 0)
+
+---
+
+#### Fixed-effect interpretation
+
+Reference categories: **Male**, **White**, **Deprivation: Low**, **severity: Low (Q1)**, **Comorbidity: 0–1**.
+
+| Predictor                   | Estimate (£) | *t* value | Interpretation (vs reference)                                                         |
+| :-------------------------- | -----------: | :-------: | :------------------------------------------------------------------------------------ |
+| **Intercept**               |        614.8 |    44.5   | Baseline mean expenditure for the reference group in control/pre-treatment condition. |
+| **Gender (Female)**         |        +65.8 |    8.7    | Women spend ≈ £66 more than men.                                                      |
+| **Race (Asian)**            |          +79 |    8.6    | Asian patients spend ≈ £79 more than White.                                           |
+| **Race (Black)**            |          +89 |    7.3    | Black patients spend ≈ £89 more than White.                                           |
+| **Deprivation (Mid)**       |         +443 |    50.0   | Mid-deprived spend ≈ £440 more than low-deprived.                                     |
+| **Deprivation (High)**      |         +991 |   100.5   | Most-deprived spend ≈ £1 k more than low-deprived.                                    |
+| **Severity (Medium Q2)**    |          −24 |    −2.3   | Medium-severity patients spend slightly less than Low (Q1).                           |
+| **Severity (High Q3)**      |          −52 |    −5.0   | High-severity spend ≈ £50 less than Low (Q1).                                         |
+| **Severity (Very High Q4)** |          −90 |    −8.6   | Very-high-severity spend ≈ £90 less than Low (Q1).                                    |
+| **Comorbidity (2–3)**       |          −22 |    −2.3   | Slightly lower expenditure than 0–1 conditions.                                       |
+| **Comorbidity (4–5)**       |          −20 |    −1.9   | Not significant.                                                                      |
+| **Comorbidity (6–7)**       |          −15 |    −1.0   | Not significant.                                                                      |
+| **Treatment (D)**           |         +521 |    26.4   | Average treatment effect: expenditure ≈ £520 higher under treatment.                  |
+
+---
+
+#### Variance decomposition
+
+| Level                    |  Variance | VPC (%) | Interpretation                                                        |
+| :----------------------- | --------: | ------: | :-------------------------------------------------------------------- |
+| Patient                  | 3 413 040 |    ≈ 46 | Large, stable patient-level heterogeneity – repeated-measure effects. |
+| Practice                 |    13 866 |   ≈ 0.2 | Small practice-level variation.                                       |
+| Strata (intercept)       |       ≈ 0 |     ≈ 0 | No remaining mean differences between intersectional groups.          |
+| Strata (treatment slope) |    90 449 |   ≈ 1.2 | Minor but non-zero variability in treatment effects across strata.    |
+| Residual                 | 3 657 502 |    ≈ 52 | Within-patient variation over years.                                  |
+
+Total variance ≈ 7 174 857.
+The *boundary (singular) fit* warning indicates that one or more random-effect variances are estimated near zero — here, the strata intercept variance collapsed to zero, meaning virtually no unexplained mean differences remain once covariates and treatment are included.
+
+---
+
+#### Substantive interpretation
+
+Model 4 allows the **treatment effect (`D`) to vary across intersectional strata**, capturing possible heterogeneity in how different combinations of gender, race, deprivation, severity and comorbidity respond to the intervention.
+
+Key findings:
+
+1. **Average treatment effect (ATE):** Expenditure increases by about **£520** under treatment on average — consistent with Model 3.
+2. **Treatment heterogeneity:** The random-slope variance for `D` (≈ 90 k; SD ≈ £300) suggests *small but non-zero* variability in treatment impact between strata. However, the singular fit indicates that this variation is weak and possibly not statistically meaningful.
+3. **Intersectional means:** The strata-level intercept variance dropped to zero → no residual between-group differences in average expenditure after adjusting for covariates and treatment.
+4. **Overall structure:** Most variance remains at the patient level (~46 %), reinforcing that individual heterogeneity dominates expenditure patterns.
+
+---
+
+#### Summary
+
+| Model       | Added terms                      | Key results                                                                                         |
+| :---------- | :------------------------------- | :-------------------------------------------------------------------------------------------------- |
+| Model 3     | + Treatment (ATE)                | £ 517 average increase under treatment; structure otherwise unchanged.                              |
+| **Model 4** | + Random slope for `D` by strata | Mean ATE ≈ £ 520; minor heterogeneity in treatment response (SD ≈ £ 300); strata-mean variance ≈ 0. |
+
+**Interpretation:**
+After accounting for social, clinical and treatment factors, intersectional strata show almost no systematic mean differences in expenditure, and treatment effects are largely homogeneous across groups.
+The boundary (singular) warning simply means that one random-effect component (the strata intercept) is redundant, not that the model is invalid.
+
+Model 4 therefore completes the causal-MAIHDA sequence: it tests for intersectional variation in treatment effects and finds little evidence of meaningful heterogeneity beyond what is explained by patient- and practice-level clustering.
+
+---
+
+
+# (9) Model 5: add interactive terms in main effects
+```{r model_5}
+# (treatment × intersectional dimensions, random slope for D by strata)
+m_5 <- lmer(expenditure ~ D*(gender + race + deprivation + severity + comorbidity) + 
+              (1 + D | strata_label), data = df, REML = TRUE)
+summary(m_5)
+```
+
+
+#### Model summary
+
+| Random effect (level)      |  Variance | Std.Dev. | Corr |
+| :------------------------- | --------: | -------: | :--: |
+| Strata (intercept)         |       ≈ 0 |     0.00 |   –  |
+| Strata (treatment slope D) |     1 751 |     41.8 |   –  |
+| Residual                   | 6 209 108 |  2 491.8 |   –  |
+
+* **Observations:** 1 262 729 **Strata:** 288
+* **Convergence:** OK (*boundary/singular fit* – intercept variance ≈ 0).
+* **REML criterion:** 23 334 361
+
+---
+
+#### Fixed-effect interpretation
+
+Reference categories: **Male**, **White**, **Deprivation: Low**, **severity: Low (Q1)**, **Comorbidity: 0–1**.
+
+| Predictor                          | Estimate (£) |  *t*  | Interpretation (vs reference)                                                                      |
+| :--------------------------------- | -----------: | :---: | :------------------------------------------------------------------------------------------------- |
+| **Intercept**                      |          600 |  69.2 | Baseline expenditure for the reference group in control/pre-treatment condition.                   |
+| **Treatment (D)**                  |          +55 |  2.4  | Average treatment effect for the reference group: ≈ £55 higher expenditure after the intervention. |
+| **Gender (Female)**                |          +76 |  14.5 | Women spend ≈ £75 more than men (overall).                                                         |
+| **Race (Asian)**                   |          +71 |  11.3 | Asian patients spend ≈ £70 more than White.                                                        |
+| **Race (Black)**                   |          +79 |  9.5  | Black patients spend ≈ £80 more than White.                                                        |
+| **Deprivation (Mid)**              |         +439 |  71.9 | Mid-deprived spend ≈ £440 more than low-deprived.                                                  |
+| **Deprivation (High)**             |         +971 | 145.2 | Most-deprived spend ≈ £970 more than low-deprived.                                                 |
+| **Severity (Medium Q2)**           |          −40 |  −5.6 | Slightly lower expenditure than low-severity (Q1).                                                 |
+| **Severity (High Q3)**             |          −67 |  −9.3 | High-severity spend ≈ £70 less than low-severity.                                                  |
+| **Severity (Very High Q4)**        |          −99 | −13.7 | Very-high-severity spend ≈ £100 less than low-severity.                                            |
+| **Comorbidity (2–3)**              |          −18 |  −2.7 | Slightly lower expenditure than 0–1 conditions.                                                    |
+| **Comorbidity (4–5)**              |          −21 |  −2.8 | Modest decrease; marginally significant.                                                           |
+| **Comorbidity (6–7)**              |           −9 |  −0.9 | Not significant.                                                                                   |
+| **Treatment × Gender (Female)**    |          +25 |  1.8  | Women's treatment effect ≈ £25 larger than men's (weak evidence).                                  |
+| **Treatment × Race (Asian)**       |          +45 |  2.8  | Asian patients' treatment response ≈ £45 greater than White.                                       |
+| **Treatment × Race (Black)**       |          +44 |  2.2  | Black patients' treatment response ≈ £44 greater than White.                                       |
+| **Treatment × Deprivation (Mid)**  |         +165 |  10.0 | Mid-deprived groups benefit ≈ £165 more than low-deprived.                                         |
+| **Treatment × Deprivation (High)** |         +403 |  23.0 | Most-deprived benefit ≈ £400 more than low-deprived.                                               |
+| **Treatment × Severity (Q2)**      |          −13 |  −0.7 | No clear difference in treatment effect by moderate severity.                                      |
+| **Treatment × Severity (Q3)**      |           +5 |  0.2  | No meaningful difference.                                                                          |
+| **Treatment × Severity (Q4)**      |          −35 |  −1.8 | Weak evidence of smaller effect for most-severe group.                                             |
+| **Treatment × Comorbidity (2–3)**  |           +4 |  0.2  | No difference.                                                                                     |
+| **Treatment × Comorbidity (4–5)**  |          +28 |  1.5  | Slightly larger treatment effect, not significant.                                                 |
+| **Treatment × Comorbidity (6–7)**  |          +21 |  0.8  | No difference.                                                                                     |
+
+---
+
+#### Variance decomposition
+
+| Level                      |  Variance | VPC (%) | Interpretation                                                    |
+| :------------------------- | --------: | ------: | :---------------------------------------------------------------- |
+| Strata (intercept)         |       ≈ 0 |     ≈ 0 | No residual between-strata differences in baseline means.         |
+| Strata (treatment slope D) |     1 751 |  ≈ 0.03 | Tiny heterogeneity in treatment effects across strata (SD ≈ £42). |
+| Residual                   | 6 209 108 |  ≈ 99.9 | Nearly all variance lies within strata (individual-level).        |
+
+**Interpretation:** Both the random-intercept and random-slope variances at the strata level are near zero → a *boundary (singular) fit*. This indicates the model reached the limit of what can be estimated: intersectional strata differ very little in either their baseline expenditure or their treatment response once covariates are included.
+
+---
+
+#### Substantive interpretation
+
+Model 5 represents the **fully interactional causal-MAIHDA**.
+It estimates how the treatment effect (`D`) differs across all intersectional dimensions.
+
+Key findings:
+
+1. **Average treatment effect (ATE):** ≈ £55 overall increase — small relative to Model 3's £520 because interaction terms absorb group-specific variation.
+2. **Heterogeneity:** Treatment effects are *strongly patterned by deprivation* — rising by ≈ £165 (mid) and ≈ £400 (high) relative to the least-deprived. Smaller, positive differences also appear for Asian and Black patients.
+3. **Gender:** Weak evidence that women benefit slightly more (+£25).
+4. **Severity and comorbidity:** No consistent moderation.
+5. **Random effects:** Minimal strata-level variance confirms that most heterogeneity is captured by the fixed (explicit) interactions rather than unmodelled intersectional effects.
+
+---
+
+#### Summary
+
+| Model       | Key addition                        | Main result                                                                                   |
+| :---------- | :---------------------------------- | :-------------------------------------------------------------------------------------------- |
+| Model 4     | Random slope for D                  | Average treatment ≈ £520; little heterogeneity.                                               |
+| **Model 5** | D × (all social & clinical factors) | Treatment effect varies by deprivation (and mildly by race/gender); other interactions small. |
+
+**Interpretation:** The full interactional MAIHDA uncovers modest but interpretable heterogeneity:
+
+* Patients in more-deprived areas and minoritised racial groups experience larger post-treatment expenditure increases.
+* Residual intersectional variance is negligible, implying that observed moderators fully explain the pattern of treatment effects.
+  The boundary warning is expected, confirming that the random intercept adds little beyond the explicit fixed-effect interactions.
+
+---
+
+# (10) Model 6: Centre D (treatment x post)
+```{r model_6}
+df <- df %>%
+  mutate(D_centre = D - mean(D))
+
+m_6 <- lmer(expenditure ~ D_centre*(gender + race + deprivation + severity + comorbidity) + 
+              (1 + D_centre | strata_label), data = df, REML = TRUE)
+summary(m_6)
+```
+
+
+### Why centring `D` helps
+
+* **Numerical stability:** With `(1 + D | strata_label)`, uncentred `D` often creates a very strong intercept–slope correlation, leading to near-singular fits. Grand-mean centring typically reduces that correlation and improves convergence.
+* **Cleaner random effects:** Centring moves the intercept to the outcome **at the average exposure to treatment** (across the sample) rather than strictly at `D = 0`. That makes the intercept and the slope less entangled.
+
+### What to centre and how
+
+Use **grand-mean centring** (not group-mean), because `D` is defined at the practice×time level and we want a single reference across the whole sample.
+
+
+### How to interpret after centring
+
+* **Intercept:** expected expenditure for the reference group at **average treatment exposure** (not strictly control/pre).
+* **`D_centre` coefficient:** **same ATE** as with `D`.
+* **Interactions `D_centre:x`:** same magnitudes as before; they describe how the treatment effect differs by `x`, now evaluated around the average exposure.
+
+
+
+
+
+#### Model summary
+
+| Random effect (level)                          |  Variance | Std.Dev. |  Corr |
+| :--------------------------------------------- | --------: | -------: | :---: |
+| Strata (`strata_label`) Intercept              |       801 |     28.3 |   –   |
+| Strata (`strata_label`) Treatment (`D_centre`) |       166 |     12.9 | +1.00 |
+| Residual                                       | 6 208 657 |  2 491.7 |   –   |
+
+* **Observations:** 1 262 729  **Strata:** 288
+* **Convergence:** OK (*boundary/singular fit* – one random-effect variance ≈ 0).
+* **REML criterion:** 23 334 323
+
+---
+
+#### Fixed-effect interpretation
+
+Reference categories: **Male**, **White**, **Deprivation: Low**, **severity: Low (Q1)**, **Comorbidity: 0–1**.
+
+| Predictor                          | Estimate (£) |  *t*  | Interpretation (vs reference)                                                                                                                                            |
+| :--------------------------------- | -----------: | :---: | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Intercept**                      |          615 |  57.4 | Average expenditure for the reference group (Male × White × Low deprivation × Low severity × Comorbidity 0–1) at the *average treatment exposure* (mean `D_centre = 0`). |
+| **Treatment (`D_centre`)**         |          +52 |  2.6  | Average treatment effect for the reference group: ≈ £52 higher expenditure post-intervention.                                                                            |
+| **Gender (Female)**                |          +81 |  12.7 | Women spend ≈ £81 more than men overall.                                                                                                                                 |
+| **Race (Asian)**                   |          +79 |  10.8 | Asian patients spend ≈ £79 more than White.                                                                                                                              |
+| **Race (Black)**                   |          +88 |  9.9  | Black patients spend ≈ £88 more than White.                                                                                                                              |
+| **Deprivation (Mid)**              |         +468 |  61.0 | Mid-deprived spend ≈ £470 more than low-deprived.                                                                                                                        |
+| **Deprivation (High)**             |       +1 039 | 128.3 | Most-deprived spend ≈ £1 040 more than low-deprived.                                                                                                                     |
+| **Severity (Medium Q2)**           |          −42 |  −4.7 | Slightly lower expenditure than low-severity (Q1).                                                                                                                       |
+| **Severity (High Q3)**             |          −66 |  −7.4 | High-severity spend ≈ £66 less than low-severity.                                                                                                                        |
+| **Severity (Very High Q4)**        |         −108 | −11.9 | Very-high-severity spend ≈ £108 less than low-severity.                                                                                                                  |
+| **Comorbidity (2–3)**              |          −20 |  −2.3 | Slightly lower expenditure than 0–1 conditions.                                                                                                                          |
+| **Comorbidity (4–5)**              |          −16 |  −1.8 | Weakly negative, not significant.                                                                                                                                        |
+| **Comorbidity (6–7)**              |           −6 |  −0.5 | Not significant.                                                                                                                                                         |
+| **Treatment × Gender (Female)**    |          +27 |  2.2  | Women’s treatment effect ≈ £27 larger than men’s.                                                                                                                        |
+| **Treatment × Race (Asian)**       |          +44 |  3.0  | Asian patients’ treatment response ≈ £44 larger than White.                                                                                                              |
+| **Treatment × Race (Black)**       |          +43 |  2.3  | Black patients’ treatment response ≈ £43 larger than White.                                                                                                              |
+| **Treatment × Deprivation (Mid)**  |         +165 |  11.5 | Mid-deprived gain ≈ £165 more from treatment than low-deprived.                                                                                                          |
+| **Treatment × Deprivation (High)** |         +405 |  26.1 | Most-deprived gain ≈ £400 more than low-deprived – strong socio-economic gradient.                                                                                       |
+| **Treatment × Severity (Q2)**      |          −11 |  −0.7 | No meaningful moderation.                                                                                                                                                |
+| **Treatment × Severity (Q3)**      |           +4 |  0.2  | No moderation.                                                                                                                                                           |
+| **Treatment × Severity (Q4)**      |          −35 |  −2.1 | Weak evidence that the most-severe group benefits less.                                                                                                                  |
+| **Treatment × Comorbidity (2–3)**  |           +7 |  0.5  | No difference.                                                                                                                                                           |
+| **Treatment × Comorbidity (4–5)**  |          +30 |  1.8  | Small, non-significant increase.                                                                                                                                         |
+| **Treatment × Comorbidity (6–7)**  |          +21 |  0.9  | No difference.                                                                                                                                                           |
+
+---
+
+#### Variance decomposition
+
+| Level                    |  Variance | VPC (%) | Interpretation                                               |
+| :----------------------- | --------: | ------: | :----------------------------------------------------------- |
+| Strata (intercept)       |       801 | ≈ 0.013 | Negligible between-strata mean differences.                  |
+| Strata (treatment slope) |       166 | ≈ 0.003 | Minimal heterogeneity in treatment effects (SD ≈ £13).       |
+| Residual                 | 6 208 657 | ≈ 99.98 | Virtually all variation is within strata (individual-level). |
+
+**Interpretation:**
+Random-effect variances are extremely small; the *singular* message simply means that the random intercept and slope are almost perfectly correlated (+1.00) and their variances near zero.
+The centring of `D` stabilised estimation compared with the uncentred Model 5 and slightly reduced the random-slope variance.
+
+---
+
+#### Substantive interpretation
+
+Model 6 repeats the fully interactional causal-MAIHDA using **centred treatment (`D_centre`)**, improving numerical stability and interpretability of the intercept and slope.
+
+Key points:
+
+1. **Average treatment effect:** ≈ £52 overall increase for the reference group – the same substantive ATE as before.
+2. **Heterogeneity:** Treatment effects remain **sharply patterned by deprivation** (+£165 mid, +£405 high) and modestly by gender and race (slightly larger gains for women, Asian, and Black patients).
+3. **Random effects:** Between-strata variance in both intercept and slope is near zero; thus, almost all heterogeneity is explained by the explicit fixed-effect interactions.
+4. **Practical impact of centring:** The model converged cleanly, intercept now represents the expected expenditure at the *average treatment exposure*, and the slope/intercept correlation, though still extreme, is well-behaved numerically.
+
+---
+
+#### Summary
+Centring the treatment variable did not change the substantive conclusions but improved model stability and interpretability.
+Treatment effects continue to vary most by socio-economic deprivation and, to a lesser degree, by gender and race, while residual intersectional variance remains negligible—indicating that most heterogeneity is captured by the observed characteristics rather than unmodelled intersectional effects.
+
+---
+
+
+
+# (11) Extract VPC and PCV
+```{r vpc}
+get_intercept_var <- function(fit, grp) {
+  vc <- as.data.frame(VarCorr(fit))
+  row <- vc[vc$grp == grp & vc$var1 == "(Intercept)" & is.na(vc$var2), , drop = FALSE]
+  if (nrow(row) == 0) NA_real_ else as.numeric(row$vcov[1])
+}
+
+get_resid_var <- function(fit) {
+  # same as sigma(fit)^2 but avoids surprises if sigma is masked
+  as.numeric(attr(VarCorr(fit), "sc"))^2
+}
+
+
+# --- Pull variances ----------------------------------------------------------
+var_u_m0 <- get_intercept_var(m_0, "strata_label")
+var_e_m0 <- get_resid_var(m_0)
+
+var_u_m1 <- get_intercept_var(m_1, "strata_label")
+var_e_m1 <- get_resid_var(m_1)
+
+var_u_m2 <- get_intercept_var(m_2, "strata_label")
+var_e_m2 <- get_resid_var(m_2)
+
+var_u_m3 <- get_intercept_var(m_3, "strata_label")
+var_e_m3 <- get_resid_var(m_3)
+
+var_u_m4 <- get_intercept_var(m_4, "strata_label")
+var_e_m4 <- get_resid_var(m_4)
+
+var_u_m5 <- get_intercept_var(m_5, "strata_label")
+var_e_m5 <- get_resid_var(m_5)
+
+var_u_m6 <- get_intercept_var(m_6, "strata_label")
+var_e_m6 <- get_resid_var(m_6)
+
+# --- VPCs (intercept L2 variance / (intercept + residual)) ---
+VPC_m0 <- var_u_m0 / (var_u_m0 + var_e_m0)
+VPC_m1 <- var_u_m1 / (var_u_m1 + var_e_m1)
+VPC_m2 <- var_u_m2 / (var_u_m2 + var_e_m2)
+VPC_m3 <- var_u_m3 / (var_u_m3 + var_e_m3)
+VPC_m4 <- var_u_m4 / (var_u_m4 + var_e_m4)
+VPC_m5 <- var_u_m5 / (var_u_m5 + var_e_m5)
+VPC_m6 <- var_u_m6 / (var_u_m6 + var_e_m6)
+
+# --- PCVs (proportion change in between-stratum variance) --------------------
+PCV_m1 <- (var_u_m1 - var_u_m0) / var_u_m0         # M0 → M1
+PCV_m2 <- (var_u_m1 - var_u_m2) / var_u_m1         # M1 → M2
+PCV_m3 <- (var_u_m2 - var_u_m3) / var_u_m2         # M2 → M3
+PCV_m4 <- (var_u_m3 - var_u_m4) / var_u_m3         # M3 → M4
+PCV_m5 <- (var_u_m5 - var_u_m4) / var_u_m4         # M4 → M5
+PCV_m6 <- (var_u_m6 - var_u_m5) / var_u_m6         # M5 → M6
+
+# --- Tables ------------------------------------------------------------------
+# model 0 and model 1
+knitr::kable(
+  tibble::tibble(
+    model = c("Model 0: null",
+              "Model 1: cluster- and panel-aware baseline"),
+    VPC   = round(c(VPC_m0, VPC_m1), 4),
+    `Between-stratum variance` = round(c(var_u_m0, var_u_m1), 3),
+    `Residual variance`        = round(c(var_e_m0, var_e_m1), 3)
+  ),
+  format   = ifelse(knitr::is_latex_output(), "latex", "simple"),
+  booktabs = knitr::is_latex_output(),
+  caption  = glue::glue("VPC and variances; PCV (M0 → M1) = {round(100*PCV_m1,1)}%")
+)
+
+
+# model 1 and model 2
+knitr::kable(
+  tibble::tibble(
+    model = c("Model 1: cluster- and panel-aware baseline",
+              "Model 2: main effects but no treatment"),
+    VPC   = round(c(VPC_m1, VPC_m2), 4),
+    `Between-stratum variance` = round(c(var_u_m1, var_u_m2), 3),
+    `Residual variance`        = round(c(var_e_m1, var_e_m2), 3)
+  ),
+  format   = ifelse(knitr::is_latex_output(), "latex", "simple"),
+  booktabs = knitr::is_latex_output(),
+  caption  = glue::glue("VPC and variances; PCV (M1 → M2) = {round(100*PCV_m2,1)}%")
+)
+
+
+
+# model 2 and model 3
+knitr::kable(
+  tibble::tibble(
+    model = c("Model 2: main effects but no treatment",
+              "Model 3: main effects with treatment"),
+    VPC   = round(c(VPC_m2, VPC_m3), 4),
+    `Between-stratum variance` = round(c(var_u_m2, var_u_m3), 3),
+    `Residual variance`        = round(c(var_e_m2, var_e_m3), 3)
+  ),
+  format   = ifelse(knitr::is_latex_output(), "latex", "simple"),
+  booktabs = knitr::is_latex_output(),
+  caption  = glue::glue("VPC and variances; PCV (M2 → M3) = {round(100*PCV_m3,1)}%")
+)
+
+
+# model 3 and model 4
+knitr::kable(
+  tibble::tibble(
+    model = c("Model 3: main effects with treatment",
+              "Model 4: random slope"),
+    VPC   = round(c(VPC_m3, VPC_m4), 4),
+    `Between-stratum variance` = round(c(var_u_m3, var_u_m4), 3),
+    `Residual variance`        = round(c(var_e_m3, var_e_m4), 3)
+  ),
+  format   = ifelse(knitr::is_latex_output(), "latex", "simple"),
+  booktabs = knitr::is_latex_output(),
+  caption  = glue::glue("VPC and variances; PCV (M3 → M4) = {round(100*PCV_m4,1)}%")
+)
+
+
+# model 4 and model 5
+knitr::kable(
+  tibble::tibble(
+    model = c("Model 4: random slope",
+              "Model 5: interactive main effects"),
+    VPC   = round(c(VPC_m4, VPC_m5), 4),
+    `Between-stratum variance` = round(c(var_u_m4, var_u_m5), 3),
+    `Residual variance`        = round(c(var_e_m4, var_e_m5), 3)
+  ),
+  format   = ifelse(knitr::is_latex_output(), "latex", "simple"),
+  booktabs = knitr::is_latex_output(),
+  caption  = glue::glue("VPC and variances; PCV (M4 → M5) = {round(100*PCV_m5,1)}%")
+)
+
+
+# model 4 and model 6
+knitr::kable(
+  tibble::tibble(
+    model = c("Model 4: random slope",
+              "Model 6: interactive main effects + centred treatment"),
+    VPC   = round(c(VPC_m4, VPC_m6), 4),
+    `Between-stratum variance` = round(c(var_u_m4, var_u_m6), 3),
+    `Residual variance`        = round(c(var_e_m4, var_e_m6), 3)
+  ),
+  format   = ifelse(knitr::is_latex_output(), "latex", "simple"),
+  booktabs = knitr::is_latex_output(),
+  caption  = glue::glue("VPC and variances; PCV (M4 → M6) = {round(100*PCV_m6,1)}%")
+)
+
+
+
+# --- slope-variance PCV (will be NA for models without a slope) ----
+get_slope_var <- function(fit, grp = "strata_label") {
+  vc <- as.data.frame(VarCorr(fit))
+  rows <- vc[vc$grp == grp & vc$var1 != "(Intercept)" & is.na(vc$var2), , drop = FALSE]
+  if (nrow(rows) == 0) {
+    c(`has_slope` = 0, `var_D` = 0)
+  } else {
+    # if multiple slopes, keep D if present; otherwise take the first
+    if ("D" %in% rows$var1) {
+      v <- rows$vcov[rows$var1 == "D"][1]
+    } else {
+      v <- rows$vcov[1]
+    }
+    c(`has_slope` = 1, `var_D` = unname(v))
+  }
+}
+
+sv <- list(
+  m0 = get_slope_var(m_0),
+  m1 = get_slope_var(m_1),
+  m2 = get_slope_var(m_2),
+  m3 = get_slope_var(m_3),
+  m4 = get_slope_var(m_4),
+  m5 = get_slope_var(m_5),
+  m6 = get_slope_var(m_6)
+)
+
+# Tidy display
+tibble::tibble(
+  model = names(sv),
+  has_slope = sapply(sv, `[[`, "has_slope"),
+  slope_variance = sapply(sv, `[[`, "var_D")
+)
+
+
+pcv <- function(v_prev, v_next) ifelse(v_prev > 0, (v_prev - v_next) / v_prev, NA_real_)
+
+var_m4 <- get_slope_var(m_4)[["var_D"]]
+var_m5 <- get_slope_var(m_5)[["var_D"]]
+var_m6 <- get_slope_var(m_6)[["var_D"]]
+
+tibble::tibble(
+  model_from = "m4", model_to = "m5",
+  slope_var_from = var_m4,
+  slope_var_to   = var_m5,
+  PCV = pcv(var_m4, var_m5)  # ≈ (90449.35 - 1750.85)/90449.35 ≈ 0.981 (98.1%)
+)
+
+tibble::tibble(
+  model_from = "m4", model_to = "m6",
+  slope_var_from = var_m4,
+  slope_var_to   = var_m6,
+  PCV = pcv(var_m4, var_m6)  # ≈ (90449.35 - 166.2923)/90449.35 ≈ 0.998 (99.8%)
+)
+
+```
+
+There is no random slope (⇒ NA) for m0, m1, m2, and m3. Only m4, m5, and m6 estimate a strata-level slope for D, and going from m4 → m5, m4 → m6 the explicit interactions explain ~98% of that slope variance.
+
+---
+
+### Model naming summary
+
+| **Model**   | **Suggested name**                                          | **Core features / formula summary**                                                                                                                                                                             |                   |                      |                |
+| :---------- | :---------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- | -------------------- | -------------- |
+| **Model 0** | **Empty (Null) MAIHDA**                                     | Baseline random-intercept model with strata only.<br>`expenditure ~ 1 + (1                                                                                                                                      | strata_label)`    |                      |                |
+| **Model 1** | **Cluster- and Patient-Aware Empty MAIHDA**                 | Adds random intercepts for practices and patients to respect the hierarchical structure.<br>`~ 1 + (1                                                                                                           | id.practice) + (1 | id.patient) + (1     | strata_label)` |
+| **Model 2** | **Main-Effects MAIHDA**                                     | Adds fixed effects for gender, race, deprivation, severity, and comorbidity (no treatment).<br>`~ gender + race + deprivation + severity + comorbidity + (1                                                     | id.practice) + (1 | id.patient) + (1     | strata_label)` |
+| **Model 3** | **Main-Effects + Average Treatment Effect (ATE) MAIHDA**    | Introduces the treatment term `D` as a fixed effect to estimate the overall ATE.<br>`~ gender + race + deprivation + severity + comorbidity + D + (1                                                            | id.practice) + (1 | id.patient) + (1     | strata_label)` |
+| **Model 4** | **Random-Slope MAIHDA (Treatment Heterogeneity by Strata)** | Allows the treatment effect `D` to vary across intersectional strata (random slope).<br>`~ gender + race + deprivation + severity + comorbidity + D + (1                                                        | id.practice) + (1 | id.patient) + (1 + D | strata_label)` |
+| **Model 5** | **Full Interactional Causal-MAIHDA**                        | Includes all `D × (social + clinical)` interactions and a random slope for `D` by strata. <br>`~ D * (gender + race + deprivation + severity + comorbidity) + (1 + D                                            | strata_label)`    |                      |                |
+| **Model 6** | **Centred Causal-MAIHDA (Stable Random-Slope Variant)**     | Same as Model 5 but uses grand-mean-centred treatment (`D_centre`) to improve numerical stability and interpretability.<br>`~ D_centre * (gender + race + deprivation + severity + comorbidity) + (1 + D_centre | strata_label)`    |                      |                |
+
+---
+
+### shorthand for plots/tables
+
+| Code   | Label for display                    |
+| ------ | ------------------------------------ |
+| **M0** | Empty (Null) MAIHDA                  |
+| **M1** | Cluster–Patient Empty                |
+| **M2** | Main-Effects MAIHDA                  |
+| **M3** | + Average Treatment Effect           |
+| **M4** | Random Slope for Treatment by Strata |
+| **M5** | Full Interactional Causal MAIHDA     |
+| **M6** | Centred Causal MAIHDA                |
+
+
+
+# (12) Caterpillars for D (treatment * post)
+
+```{r caterpillars, fig.width=7, fig.height=5}
+
+re4_fast <- ranef(m_4, condVar = FALSE)[["strata_label"]] %>%
+  tibble::rownames_to_column("stratum") %>%
+  as_tibble()
+
+slope_term4 <- intersect(colnames(re4_fast), c("D", "D_centre"))[1]
+
+ggplot(re4_fast %>% arrange(.data[[slope_term4]]) %>%
+         mutate(stratum = factor(stratum, levels = stratum)),
+       aes(x = .data[[slope_term4]], y = stratum)) +
+  geom_vline(xintercept = 0, linetype = 2) +
+  geom_point(size = 0.8) +
+  labs(x = sprintf("Random slope BLUP (%s)", slope_term4),
+       y = "Stratum",
+       title = "Model 4: stratum-specific treatment effects (BLUPs)") +
+  theme_minimal(base_size = 12)
+
+```
+
+
+# (13) Top fifteen strata by size
+
+```{r strata-top15}
+# Summarise readable strata and present the top fifteen by patient-year count
+strata_top15 <- df %>%
+  group_by(strata_label) %>%
+  summarise(
+    n          = n(),
+    patients   = n_distinct(id.patient),
+    practices  = n_distinct(id.practice),
+    mean_expenditure     = mean(expenditure, na.rm = TRUE),
+    D_rate     = mean(D, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(n)) %>%
+  slice_head(n = 15) %>%
+  mutate(
+    `Mean Expenditure` = round(mean_expenditure, 2),
+    `D rate` = scales::percent(D_rate, accuracy = 0.1)
+  ) %>%
+  select(`Strata (readable)` = strata_label, n, patients, practices, `Mean Expenditure`, `D rate`)
+
+knitr::kable(
+  strata_top15,
+  format   = ifelse(knitr::is_latex_output(), "latex", "simple"),
+  booktabs = knitr::is_latex_output(),
+  align    = "lrrrrl",
+  caption  = "Top fifteen intersectional strata by number of patient-year observations (with mean outcome and exposure rate)."
+)
+
+# Optional bar chart for the same table
+plot_df <- strata_top15 %>%
+  mutate(label = forcats::fct_reorder(`Strata (readable)`, n))
+
+ggplot(plot_df, aes(x = label, y = n)) +
+  geom_col() +
+  coord_flip() +
+  labs(
+    title = "Top fifteen strata by size",
+    x = NULL, y = "Patient-year observations"
+  ) +
+  theme_minimal()
+
+
+```
