@@ -189,7 +189,7 @@ Without D, we cannot distinguish between patients in treated practices before in
 # (2) Recode to readable, teaching-friendly labels (strata inputs)
 
 ```{r load-merge}
-df <- read_csv("/Users/constanceko/Desktop/MAIHDA_/replicate_52.csv")
+df <- read_csv("C:/Users/ed1yg/OneDrive/MAIHDA_/replicate_52.csv")
 names(df)
 
 df <- df %>%
@@ -550,7 +550,7 @@ summary(m_3)
 | Strata (`strata_label`)   |       442 |      21.0 |
 | Residual (within-patient) | 3 679 935 |   1 918.3 |
 
-* **Intercept (average expenditure)** = £ 552.97 (SE = 14.74, *t* = 37.5)
+* **Intercept (average expenditure)** = $ 552.97 (SE = 14.74, *t* = 37.5)
 * **Observations:** 1 262 729 **Patients:** 407 879 **Practices:** 500 **Strata:** 288
 
 ---
@@ -559,21 +559,21 @@ summary(m_3)
 
 Reference categories: **Male**, **White**, **Deprivation: Low**, **severity: Low (Q1)**, **Comorbidity: 0–1**.
 
-| Predictor                   | Estimate (£) | *t* value | Interpretation (vs reference)                                                                                                       |
+| Predictor                   | Estimate ($) | *t* value | Interpretation (vs reference)                                                                                                       |
 | :-------------------------- | -----------: | :-------: | :---------------------------------------------------------------------------------------------------------------------------------- |
 | **Intercept**               |          553 |    37.5   | Mean expenditure for baseline (Male × White × Low deprivation × Low severity × Comorbidity 0–1) in control/pre-treatment condition. |
-| **Gender (Female)**         |          +76 |    9.4    | Women spend ≈ £76 more than men.                                                                                                    |
-| **Race (Asian)**            |          +87 |    9.0    | Asian patients spend ≈ £87 more than White.                                                                                         |
-| **Race (Black)**            |          +94 |    7.6    | Black patients spend ≈ £94 more than White.                                                                                         |
-| **Deprivation (Mid)**       |         +494 |    51.9   | Mid-deprived spend ≈ £490 more than low-deprived.                                                                                   |
-| **Deprivation (High)**      |       +1 114 |   106.6   | Most-deprived spend ≈ £1.1 k more than low-deprived.                                                                                |
-| **Severity (Medium Q2)**    |          −31 |    −2.8   | Medium-severity spend ≈ £31 less than low-severity (Q1).                                                                            |
-| **Severity (High Q3)**      |          −58 |    −5.2   | High-severity spend ≈ £58 less than low-severity.                                                                                   |
-| **Severity (Very High Q4)** |         −103 |    −9.1   | Very-high-severity spend ≈ £103 less than low-severity.                                                                             |
+| **Gender (Female)**         |          +76 |    9.4    | Women spend ≈ $76 more than men.                                                                                                    |
+| **Race (Asian)**            |          +87 |    9.0    | Asian patients spend ≈ $87 more than White.                                                                                         |
+| **Race (Black)**            |          +94 |    7.6    | Black patients spend ≈ $94 more than White.                                                                                         |
+| **Deprivation (Mid)**       |         +494 |    51.9   | Mid-deprived spend ≈ $490 more than low-deprived.                                                                                   |
+| **Deprivation (High)**      |       +1 114 |   106.6   | Most-deprived spend ≈ $1.1 k more than low-deprived.                                                                                |
+| **Severity (Medium Q2)**    |          −31 |    −2.8   | Medium-severity spend ≈ $31 less than low-severity (Q1).                                                                            |
+| **Severity (High Q3)**      |          −58 |    −5.2   | High-severity spend ≈ $58 less than low-severity.                                                                                   |
+| **Severity (Very High Q4)** |         −103 |    −9.1   | Very-high-severity spend ≈ $103 less than low-severity.                                                                             |
 | **Comorbidity (2–3)**       |          −23 |    −2.3   | Slightly lower spending than 0–1 conditions.                                                                                        |
 | **Comorbidity (4–5)**       |          −17 |    −1.5   | Not significant.                                                                                                                    |
 | **Comorbidity (6–7)**       |          −12 |    −0.8   | Not significant.                                                                                                                    |
-| **Treatment (D)**           |         +517 |    90.6   | Average treatment effect: on average, expenditure is ≈ £517 higher under treatment (practice-level intervention × post period).     |
+| **Treatment (D)**           |         +517 |    90.6   | Average treatment effect: on average, expenditure is ≈ $517 higher under treatment (practice-level intervention × post period).     |
 
 ---
 
@@ -598,7 +598,7 @@ Model 3 extends the main-effects MAIHDA by introducing the **average treatment e
 
 Key points:
 
-1. **Treatment effect:** The coefficient for `D` (+£517) indicates that, on average, patients in treated practices after the intervention spent about £500 more per year than their counterparts in control/pre conditions.
+1. **Treatment effect:** The coefficient for `D` (+$517) indicates that, on average, patients in treated practices after the intervention spent about $500 more per year than their counterparts in control/pre conditions.
 2. **Social patterning:** The direction and magnitude of gender, race, and deprivation effects remain similar to Model 2, showing these inequalities persist independent of treatment status.
 3. **Variance structure:** Most variation still occurs at the patient level (~46 %), but the increase in practice-level variance suggests some practice-specific differences in average outcomes post-intervention.
 4. **Between-strata inequality:** Remains minimal (< 0.01 %), confirming that intersectional group differences are explained by additive main effects rather than unique interactions.
@@ -610,7 +610,7 @@ Key points:
 | Model       | Key change                 | Main finding                                                                                          |
 | :---------- | :------------------------- | :---------------------------------------------------------------------------------------------------- |
 | Model 2     | Additive main effects only | Structural socio-demographic and clinical factors explain nearly all between-strata variation.        |
-| **Model 3** | + Treatment (main ATE)     | Treatment increases average expenditure by ≈ £500 and introduces slight practice-level heterogeneity. |
+| **Model 3** | + Treatment (main ATE)     | Treatment increases average expenditure by ≈ $500 and introduces slight practice-level heterogeneity. |
 
 
 # (8) Model 4: add random slope for strata
@@ -635,7 +635,7 @@ summary(m_4)
 | Strata (`strata_label`) Treatment (`D`) |    90 449 |     300.7 |   –  |
 | Residual                                | 3 657 502 |     1 912 |   –  |
 
-* **Intercept (mean expenditure)** = £ 614.8 (SE = 13.8, *t* = 44.5)
+* **Intercept (mean expenditure)** = $ 614.8 (SE = 13.8, *t* = 44.5)
 * **Observations:** 1 262 729 **Patients:** 407 879 **Practices:** 500 **Strata:** 288
 * **Convergence:** OK (but *boundary / singular fit* → some random-effect variances near 0)
 
@@ -645,21 +645,21 @@ summary(m_4)
 
 Reference categories: **Male**, **White**, **Deprivation: Low**, **severity: Low (Q1)**, **Comorbidity: 0–1**.
 
-| Predictor                   | Estimate (£) | *t* value | Interpretation (vs reference)                                                         |
+| Predictor                   | Estimate ($) | *t* value | Interpretation (vs reference)                                                         |
 | :-------------------------- | -----------: | :-------: | :------------------------------------------------------------------------------------ |
 | **Intercept**               |        614.8 |    44.5   | Baseline mean expenditure for the reference group in control/pre-treatment condition. |
-| **Gender (Female)**         |        +65.8 |    8.7    | Women spend ≈ £66 more than men.                                                      |
-| **Race (Asian)**            |          +79 |    8.6    | Asian patients spend ≈ £79 more than White.                                           |
-| **Race (Black)**            |          +89 |    7.3    | Black patients spend ≈ £89 more than White.                                           |
-| **Deprivation (Mid)**       |         +443 |    50.0   | Mid-deprived spend ≈ £440 more than low-deprived.                                     |
-| **Deprivation (High)**      |         +991 |   100.5   | Most-deprived spend ≈ £1 k more than low-deprived.                                    |
+| **Gender (Female)**         |        +65.8 |    8.7    | Women spend ≈ $66 more than men.                                                      |
+| **Race (Asian)**            |          +79 |    8.6    | Asian patients spend ≈ $79 more than White.                                           |
+| **Race (Black)**            |          +89 |    7.3    | Black patients spend ≈ $89 more than White.                                           |
+| **Deprivation (Mid)**       |         +443 |    50.0   | Mid-deprived spend ≈ $440 more than low-deprived.                                     |
+| **Deprivation (High)**      |         +991 |   100.5   | Most-deprived spend ≈ $1 k more than low-deprived.                                    |
 | **Severity (Medium Q2)**    |          −24 |    −2.3   | Medium-severity patients spend slightly less than Low (Q1).                           |
-| **Severity (High Q3)**      |          −52 |    −5.0   | High-severity spend ≈ £50 less than Low (Q1).                                         |
-| **Severity (Very High Q4)** |          −90 |    −8.6   | Very-high-severity spend ≈ £90 less than Low (Q1).                                    |
+| **Severity (High Q3)**      |          −52 |    −5.0   | High-severity spend ≈ $50 less than Low (Q1).                                         |
+| **Severity (Very High Q4)** |          −90 |    −8.6   | Very-high-severity spend ≈ $90 less than Low (Q1).                                    |
 | **Comorbidity (2–3)**       |          −22 |    −2.3   | Slightly lower expenditure than 0–1 conditions.                                       |
 | **Comorbidity (4–5)**       |          −20 |    −1.9   | Not significant.                                                                      |
 | **Comorbidity (6–7)**       |          −15 |    −1.0   | Not significant.                                                                      |
-| **Treatment (D)**           |         +521 |    26.4   | Average treatment effect: expenditure ≈ £520 higher under treatment.                  |
+| **Treatment (D)**           |         +521 |    26.4   | Average treatment effect: expenditure ≈ $520 higher under treatment.                  |
 
 ---
 
@@ -684,8 +684,8 @@ Model 4 allows the **treatment effect (`D`) to vary across intersectional strata
 
 Key findings:
 
-1. **Average treatment effect (ATE):** Expenditure increases by about **£520** under treatment on average — consistent with Model 3.
-2. **Treatment heterogeneity:** The random-slope variance for `D` (≈ 90 k; SD ≈ £300) suggests *small but non-zero* variability in treatment impact between strata. However, the singular fit indicates that this variation is weak and possibly not statistically meaningful.
+1. **Average treatment effect (ATE):** Expenditure increases by about **$520** under treatment on average — consistent with Model 3.
+2. **Treatment heterogeneity:** The random-slope variance for `D` (≈ 90 k; SD ≈ $300) suggests *small but non-zero* variability in treatment impact between strata. However, the singular fit indicates that this variation is weak and possibly not statistically meaningful.
 3. **Intersectional means:** The strata-level intercept variance dropped to zero → no residual between-group differences in average expenditure after adjusting for covariates and treatment.
 4. **Overall structure:** Most variance remains at the patient level (~46 %), reinforcing that individual heterogeneity dominates expenditure patterns.
 
@@ -695,8 +695,8 @@ Key findings:
 
 | Model       | Added terms                      | Key results                                                                                         |
 | :---------- | :------------------------------- | :-------------------------------------------------------------------------------------------------- |
-| Model 3     | + Treatment (ATE)                | £ 517 average increase under treatment; structure otherwise unchanged.                              |
-| **Model 4** | + Random slope for `D` by strata | Mean ATE ≈ £ 520; minor heterogeneity in treatment response (SD ≈ £ 300); strata-mean variance ≈ 0. |
+| Model 3     | + Treatment (ATE)                | $ 517 average increase under treatment; structure otherwise unchanged.                              |
+| **Model 4** | + Random slope for `D` by strata | Mean ATE ≈ $ 520; minor heterogeneity in treatment response (SD ≈ $ 300); strata-mean variance ≈ 0. |
 
 **Interpretation:**
 After accounting for social, clinical and treatment factors, intersectional strata show almost no systematic mean differences in expenditure, and treatment effects are largely homogeneous across groups.
@@ -710,8 +710,8 @@ Model 4 therefore completes the causal-MAIHDA sequence: it tests for intersectio
 # (9) Model 5: add interactive terms in main effects
 ```{r model_5}
 # (treatment × intersectional dimensions, random slope for D by strata)
-m_5 <- lmer(expenditure ~ D*(gender + race + deprivation + severity + comorbidity) + 
-              (1 + D | strata_label), data = df, REML = TRUE)
+m_5 <- lmer(expenditure ~ D*(gender + race + deprivation + severity +              comorbidity) + 
+            (1 + D | strata_label), data = df, REML = TRUE)
 summary(m_5)
 ```
 
@@ -734,26 +734,26 @@ summary(m_5)
 
 Reference categories: **Male**, **White**, **Deprivation: Low**, **severity: Low (Q1)**, **Comorbidity: 0–1**.
 
-| Predictor                          | Estimate (£) |  *t*  | Interpretation (vs reference)                                                                      |
+| Predictor                          | Estimate ($) |  *t*  | Interpretation (vs reference)                                                                      |
 | :--------------------------------- | -----------: | :---: | :------------------------------------------------------------------------------------------------- |
 | **Intercept**                      |          600 |  69.2 | Baseline expenditure for the reference group in control/pre-treatment condition.                   |
-| **Treatment (D)**                  |          +55 |  2.4  | Average treatment effect for the reference group: ≈ £55 higher expenditure after the intervention. |
-| **Gender (Female)**                |          +76 |  14.5 | Women spend ≈ £75 more than men (overall).                                                         |
-| **Race (Asian)**                   |          +71 |  11.3 | Asian patients spend ≈ £70 more than White.                                                        |
-| **Race (Black)**                   |          +79 |  9.5  | Black patients spend ≈ £80 more than White.                                                        |
-| **Deprivation (Mid)**              |         +439 |  71.9 | Mid-deprived spend ≈ £440 more than low-deprived.                                                  |
-| **Deprivation (High)**             |         +971 | 145.2 | Most-deprived spend ≈ £970 more than low-deprived.                                                 |
+| **Treatment (D)**                  |          +55 |  2.4  | Average treatment effect for the reference group: ≈ $55 higher expenditure after the intervention. |
+| **Gender (Female)**                |          +76 |  14.5 | Women spend ≈ $75 more than men (overall).                                                         |
+| **Race (Asian)**                   |          +71 |  11.3 | Asian patients spend ≈ $70 more than White.                                                        |
+| **Race (Black)**                   |          +79 |  9.5  | Black patients spend ≈ $80 more than White.                                                        |
+| **Deprivation (Mid)**              |         +439 |  71.9 | Mid-deprived spend ≈ $440 more than low-deprived.                                                  |
+| **Deprivation (High)**             |         +971 | 145.2 | Most-deprived spend ≈ $970 more than low-deprived.                                                 |
 | **Severity (Medium Q2)**           |          −40 |  −5.6 | Slightly lower expenditure than low-severity (Q1).                                                 |
-| **Severity (High Q3)**             |          −67 |  −9.3 | High-severity spend ≈ £70 less than low-severity.                                                  |
-| **Severity (Very High Q4)**        |          −99 | −13.7 | Very-high-severity spend ≈ £100 less than low-severity.                                            |
+| **Severity (High Q3)**             |          −67 |  −9.3 | High-severity spend ≈ $70 less than low-severity.                                                  |
+| **Severity (Very High Q4)**        |          −99 | −13.7 | Very-high-severity spend ≈ $100 less than low-severity.                                            |
 | **Comorbidity (2–3)**              |          −18 |  −2.7 | Slightly lower expenditure than 0–1 conditions.                                                    |
 | **Comorbidity (4–5)**              |          −21 |  −2.8 | Modest decrease; marginally significant.                                                           |
 | **Comorbidity (6–7)**              |           −9 |  −0.9 | Not significant.                                                                                   |
-| **Treatment × Gender (Female)**    |          +25 |  1.8  | Women's treatment effect ≈ £25 larger than men's (weak evidence).                                  |
-| **Treatment × Race (Asian)**       |          +45 |  2.8  | Asian patients' treatment response ≈ £45 greater than White.                                       |
-| **Treatment × Race (Black)**       |          +44 |  2.2  | Black patients' treatment response ≈ £44 greater than White.                                       |
-| **Treatment × Deprivation (Mid)**  |         +165 |  10.0 | Mid-deprived groups benefit ≈ £165 more than low-deprived.                                         |
-| **Treatment × Deprivation (High)** |         +403 |  23.0 | Most-deprived benefit ≈ £400 more than low-deprived.                                               |
+| **Treatment × Gender (Female)**    |          +25 |  1.8  | Women's treatment effect ≈ $25 larger than men's (weak evidence).                                  |
+| **Treatment × Race (Asian)**       |          +45 |  2.8  | Asian patients' treatment response ≈ $45 greater than White.                                       |
+| **Treatment × Race (Black)**       |          +44 |  2.2  | Black patients' treatment response ≈ $44 greater than White.                                       |
+| **Treatment × Deprivation (Mid)**  |         +165 |  10.0 | Mid-deprived groups benefit ≈ $165 more than low-deprived.                                         |
+| **Treatment × Deprivation (High)** |         +403 |  23.0 | Most-deprived benefit ≈ $400 more than low-deprived.                                               |
 | **Treatment × Severity (Q2)**      |          −13 |  −0.7 | No clear difference in treatment effect by moderate severity.                                      |
 | **Treatment × Severity (Q3)**      |           +5 |  0.2  | No meaningful difference.                                                                          |
 | **Treatment × Severity (Q4)**      |          −35 |  −1.8 | Weak evidence of smaller effect for most-severe group.                                             |
@@ -768,7 +768,7 @@ Reference categories: **Male**, **White**, **Deprivation: Low**, **severity: Low
 | Level                      |  Variance | VPC (%) | Interpretation                                                    |
 | :------------------------- | --------: | ------: | :---------------------------------------------------------------- |
 | Strata (intercept)         |       ≈ 0 |     ≈ 0 | No residual between-strata differences in baseline means.         |
-| Strata (treatment slope D) |     1 751 |  ≈ 0.03 | Tiny heterogeneity in treatment effects across strata (SD ≈ £42). |
+| Strata (treatment slope D) |     1 751 |  ≈ 0.03 | Tiny heterogeneity in treatment effects across strata (SD ≈ $42). |
 | Residual                   | 6 209 108 |  ≈ 99.9 | Nearly all variance lies within strata (individual-level).        |
 
 **Interpretation:** Both the random-intercept and random-slope variances at the strata level are near zero → a *boundary (singular) fit*. This indicates the model reached the limit of what can be estimated: intersectional strata differ very little in either their baseline expenditure or their treatment response once covariates are included.
@@ -782,9 +782,9 @@ It estimates how the treatment effect (`D`) differs across all intersectional di
 
 Key findings:
 
-1. **Average treatment effect (ATE):** ≈ £55 overall increase — small relative to Model 3's £520 because interaction terms absorb group-specific variation.
-2. **Heterogeneity:** Treatment effects are *strongly patterned by deprivation* — rising by ≈ £165 (mid) and ≈ £400 (high) relative to the least-deprived. Smaller, positive differences also appear for Asian and Black patients.
-3. **Gender:** Weak evidence that women benefit slightly more (+£25).
+1. **Average treatment effect (ATE):** ≈ $55 overall increase — small relative to Model 3's $520 because interaction terms absorb group-specific variation.
+2. **Heterogeneity:** Treatment effects are *strongly patterned by deprivation* — rising by ≈ $165 (mid) and ≈ $400 (high) relative to the least-deprived. Smaller, positive differences also appear for Asian and Black patients.
+3. **Gender:** Weak evidence that women benefit slightly more (+$25).
 4. **Severity and comorbidity:** No consistent moderation.
 5. **Random effects:** Minimal strata-level variance confirms that most heterogeneity is captured by the fixed (explicit) interactions rather than unmodelled intersectional effects.
 
@@ -794,7 +794,7 @@ Key findings:
 
 | Model       | Key addition                        | Main result                                                                                   |
 | :---------- | :---------------------------------- | :-------------------------------------------------------------------------------------------- |
-| Model 4     | Random slope for D                  | Average treatment ≈ £520; little heterogeneity.                                               |
+| Model 4     | Random slope for D                  | Average treatment ≈ $520; little heterogeneity.                                               |
 | **Model 5** | D × (all social & clinical factors) | Treatment effect varies by deprivation (and mildly by race/gender); other interactions small. |
 
 **Interpretation:** The full interactional MAIHDA uncovers modest but interpretable heterogeneity:
@@ -854,26 +854,26 @@ Use **grand-mean centring** (not group-mean), because `D` is defined at the prac
 
 Reference categories: **Male**, **White**, **Deprivation: Low**, **severity: Low (Q1)**, **Comorbidity: 0–1**.
 
-| Predictor                          | Estimate (£) |  *t*  | Interpretation (vs reference)                                                                                                                                            |
+| Predictor                          | Estimate ($) |  *t*  | Interpretation (vs reference)                                                                                                                                            |
 | :--------------------------------- | -----------: | :---: | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Intercept**                      |          615 |  57.4 | Average expenditure for the reference group (Male × White × Low deprivation × Low severity × Comorbidity 0–1) at the *average treatment exposure* (mean `D_centre = 0`). |
-| **Treatment (`D_centre`)**         |          +52 |  2.6  | Average treatment effect for the reference group: ≈ £52 higher expenditure post-intervention.                                                                            |
-| **Gender (Female)**                |          +81 |  12.7 | Women spend ≈ £81 more than men overall.                                                                                                                                 |
-| **Race (Asian)**                   |          +79 |  10.8 | Asian patients spend ≈ £79 more than White.                                                                                                                              |
-| **Race (Black)**                   |          +88 |  9.9  | Black patients spend ≈ £88 more than White.                                                                                                                              |
-| **Deprivation (Mid)**              |         +468 |  61.0 | Mid-deprived spend ≈ £470 more than low-deprived.                                                                                                                        |
-| **Deprivation (High)**             |       +1 039 | 128.3 | Most-deprived spend ≈ £1 040 more than low-deprived.                                                                                                                     |
+| **Treatment (`D_centre`)**         |          +52 |  2.6  | Average treatment effect for the reference group: ≈ $52 higher expenditure post-intervention.                                                                            |
+| **Gender (Female)**                |          +81 |  12.7 | Women spend ≈ $81 more than men overall.                                                                                                                                 |
+| **Race (Asian)**                   |          +79 |  10.8 | Asian patients spend ≈ $79 more than White.                                                                                                                              |
+| **Race (Black)**                   |          +88 |  9.9  | Black patients spend ≈ $88 more than White.                                                                                                                              |
+| **Deprivation (Mid)**              |         +468 |  61.0 | Mid-deprived spend ≈ $470 more than low-deprived.                                                                                                                        |
+| **Deprivation (High)**             |       +1 039 | 128.3 | Most-deprived spend ≈ $1 040 more than low-deprived.                                                                                                                     |
 | **Severity (Medium Q2)**           |          −42 |  −4.7 | Slightly lower expenditure than low-severity (Q1).                                                                                                                       |
-| **Severity (High Q3)**             |          −66 |  −7.4 | High-severity spend ≈ £66 less than low-severity.                                                                                                                        |
-| **Severity (Very High Q4)**        |         −108 | −11.9 | Very-high-severity spend ≈ £108 less than low-severity.                                                                                                                  |
+| **Severity (High Q3)**             |          −66 |  −7.4 | High-severity spend ≈ $66 less than low-severity.                                                                                                                        |
+| **Severity (Very High Q4)**        |         −108 | −11.9 | Very-high-severity spend ≈ $108 less than low-severity.                                                                                                                  |
 | **Comorbidity (2–3)**              |          −20 |  −2.3 | Slightly lower expenditure than 0–1 conditions.                                                                                                                          |
 | **Comorbidity (4–5)**              |          −16 |  −1.8 | Weakly negative, not significant.                                                                                                                                        |
 | **Comorbidity (6–7)**              |           −6 |  −0.5 | Not significant.                                                                                                                                                         |
-| **Treatment × Gender (Female)**    |          +27 |  2.2  | Women’s treatment effect ≈ £27 larger than men’s.                                                                                                                        |
-| **Treatment × Race (Asian)**       |          +44 |  3.0  | Asian patients’ treatment response ≈ £44 larger than White.                                                                                                              |
-| **Treatment × Race (Black)**       |          +43 |  2.3  | Black patients’ treatment response ≈ £43 larger than White.                                                                                                              |
-| **Treatment × Deprivation (Mid)**  |         +165 |  11.5 | Mid-deprived gain ≈ £165 more from treatment than low-deprived.                                                                                                          |
-| **Treatment × Deprivation (High)** |         +405 |  26.1 | Most-deprived gain ≈ £400 more than low-deprived – strong socio-economic gradient.                                                                                       |
+| **Treatment × Gender (Female)**    |          +27 |  2.2  | Women’s treatment effect ≈ $27 larger than men’s.                                                                                                                        |
+| **Treatment × Race (Asian)**       |          +44 |  3.0  | Asian patients’ treatment response ≈ $44 larger than White.                                                                                                              |
+| **Treatment × Race (Black)**       |          +43 |  2.3  | Black patients’ treatment response ≈ $43 larger than White.                                                                                                              |
+| **Treatment × Deprivation (Mid)**  |         +165 |  11.5 | Mid-deprived gain ≈ $165 more from treatment than low-deprived.                                                                                                          |
+| **Treatment × Deprivation (High)** |         +405 |  26.1 | Most-deprived gain ≈ $400 more than low-deprived – strong socio-economic gradient.                                                                                       |
 | **Treatment × Severity (Q2)**      |          −11 |  −0.7 | No meaningful moderation.                                                                                                                                                |
 | **Treatment × Severity (Q3)**      |           +4 |  0.2  | No moderation.                                                                                                                                                           |
 | **Treatment × Severity (Q4)**      |          −35 |  −2.1 | Weak evidence that the most-severe group benefits less.                                                                                                                  |
@@ -888,7 +888,7 @@ Reference categories: **Male**, **White**, **Deprivation: Low**, **severity: Low
 | Level                    |  Variance | VPC (%) | Interpretation                                               |
 | :----------------------- | --------: | ------: | :----------------------------------------------------------- |
 | Strata (intercept)       |       801 | ≈ 0.013 | Negligible between-strata mean differences.                  |
-| Strata (treatment slope) |       166 | ≈ 0.003 | Minimal heterogeneity in treatment effects (SD ≈ £13).       |
+| Strata (treatment slope) |       166 | ≈ 0.003 | Minimal heterogeneity in treatment effects (SD ≈ $13).       |
 | Residual                 | 6 208 657 | ≈ 99.98 | Virtually all variation is within strata (individual-level). |
 
 **Interpretation:**
@@ -903,8 +903,8 @@ Model 6 repeats the fully interactional causal-MAIHDA using **centred treatment 
 
 Key points:
 
-1. **Average treatment effect:** ≈ £52 overall increase for the reference group – the same substantive ATE as before.
-2. **Heterogeneity:** Treatment effects remain **sharply patterned by deprivation** (+£165 mid, +£405 high) and modestly by gender and race (slightly larger gains for women, Asian, and Black patients).
+1. **Average treatment effect:** ≈ $52 overall increase for the reference group – the same substantive ATE as before.
+2. **Heterogeneity:** Treatment effects remain **sharply patterned by deprivation** (+$165 mid, +$405 high) and modestly by gender and race (slightly larger gains for women, Asian, and Black patients).
 3. **Random effects:** Between-strata variance in both intercept and slope is near zero; thus, almost all heterogeneity is explained by the explicit fixed-effect interactions.
 4. **Practical impact of centring:** The model converged cleanly, intercept now represents the expected expenditure at the *average treatment exposure*, and the slope/intercept correlation, though still extreme, is well-behaved numerically.
 
