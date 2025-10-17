@@ -1,0 +1,204 @@
+---
+title: "Understanding Why We Convert Data to a Double Matrix"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    number_sections: true
+---
+
+# 1. Background
+
+When fitting a causal forest using the `grf` package, the function  
+`causal_forest(X, Y, W)` expects:
+
+- **X** – a numeric matrix of features  
+- **Y** – a numeric outcome vector  
+- **D** – a numeric treatment indicator (here it means treatment * post)
+
+The backend of `grf` is written in C++.  
+C++ cannot directly handle R’s flexible data structures such as data frames or factors.  
+It expects clean numeric arrays (`double*` in C++).  
+Therefore, before modelling, we must ensure that `X` is:
+
+1. a **matrix**, not a data frame or tibble; and  
+2. internally stored as **double-precision floating-point numbers**.
+
+---
+
+# 2. Why a Matrix?
+
+In R, data frames can mix types: some columns numeric, others factors or logicals.  
+Machine learning algorithms, however, require all inputs to be numeric and of the same type.  
+That’s why we use:
+
+```r
+X <- model.matrix(~ . - 1, data = df)
+```
+
+This does two things:
+
+* Converts categorical (factor) variables into numeric dummy variables;
+* Removes the intercept (`-1`), leaving only the pure feature values.
+
+At this point `X` becomes a **numeric matrix**, suitable for models that expect arrays of numbers.
+
+---
+
+# 3. Why a *Double* Matrix?
+
+Even when `model.matrix()` already returns numeric values,
+we still make sure the underlying storage type is `double` (8-byte floating point).
+This ensures perfect compatibility with the C++ engine used in `grf`.
+
+We do this explicitly with:
+
+```r
+X <- as.matrix(X)
+storage.mode(X) <- "double"
+```
+
+The first line guarantees that `X` is a plain R matrix, not a tibble or special object.
+The second line forces all numbers inside the matrix to be stored as **double precision**.
+It’s a safety step to avoid hidden type conversions or memory duplication later.
+
+---
+
+# 4. A Simple Example
+
+Let’s walk through a minimal example to see what happens.
+
+```r
+df <- data.frame(
+  gender = factor(c("Male", "Female", "Female")),
+  age = c(30L, 25L, 40L),
+  treated = c(TRUE, FALSE, TRUE)
+)
+df
+```
+
+Output:
+
+| gender | age | treated |
+| :----- | :-- | :------ |
+| Male   | 30  | TRUE    |
+| Female | 25  | FALSE   |
+| Female | 40  | TRUE    |
+
+In R:
+
+* `factor` means a categorical variable;
+* `integer` (like `30L`) means whole numbers only;
+* `logical` (`TRUE/FALSE`) means Boolean values.
+
+We want all of them converted to **numbers** so the model can read them.
+
+---
+
+## Step 1 – Use `model.matrix()`
+
+```r
+X <- model.matrix(~ . - 1, data = df)
+X
+```
+
+Output:
+
+| genderMale | genderFemale | age | treatedTRUE |
+| :--------- | :----------- | :-- | :---------- |
+| 1          | 0            | 30  | 1           |
+| 0          | 1            | 25  | 0           |
+| 0          | 1            | 40  | 1           |
+
+These are now numeric columns (0s and 1s for factors).
+We can check the internal storage type:
+
+```r
+typeof(X)
+# "double"
+```
+
+So each number is stored as a **double-precision floating-point value** (8 bytes each).
+
+---
+
+## Step 2 – Understand “double” vs “integer”
+
+Inside the computer:
+
+| Type      | Bytes per value | Can store decimals? | Typical use  |
+| :-------- | :-------------- | :------------------ | :----------- |
+| `integer` | 4               | ❌ No                | whole counts |
+| `double`  | 8               | ✅ Yes               | real numbers |
+
+Example:
+
+```r
+x <- c(1, 2, 3)
+typeof(x)  # "double"
+
+y <- c(1L, 2L, 3L)
+typeof(y)  # "integer"
+```
+
+Both *look* like `1 2 3`, but only the first is stored as double precision.
+Double is more flexible because it can handle fractions and scientific notation.
+
+---
+
+## Step 3 – Forcing to Double
+
+Sometimes your matrix might still be integer or logical.
+You can always enforce double storage:
+
+```r
+X_int <- matrix(1:6, nrow = 2)
+typeof(X_int)             # "integer"
+
+storage.mode(X_int) <- "double"
+typeof(X_int)             # "double"
+```
+
+Now `X_int` is stored as double values - ready for numeric computation.
+
+---
+
+# 5. Why Causal Forest Requires Doubles
+
+The `grf::causal_forest()` function is implemented in C++.
+Its core signature looks like this:
+
+```cpp
+void causal_forest(const double* X, const double* Y, const double* D, ...);
+```
+
+It literally asks for pointers to **double-precision arrays**.
+If you pass an integer or logical matrix, R has to create a temporary copy and convert it.
+This wastes memory and can trigger errors like:
+
+> “Error: X must be a numeric matrix”
+
+To avoid such hidden conversions, we explicitly prepare a clean double matrix in advance.
+
+---
+
+# 6. Quick Comparison
+
+| Object                          | `class()`      | `typeof()`    | Acceptable for `grf`? | Note              |
+| :------------------------------ | :------------- | :------------ | :-------------------- | :---------------- |
+| `data.frame`                    | `"data.frame"` | `"list"`      | ❌                     | mixed types       |
+| `matrix(1:6, nrow=2)`           | `"matrix"`     | `"integer"`   | ❌                     | integer only      |
+| `as.matrix(df)`                 | `"matrix"`     | `"character"` | ❌                     | contains strings  |
+| `model.matrix(~ . -1, data=df)` | `"matrix"`     | `"double"`    | ✅                     | ideal input       |
+| `storage.mode(X) <- "double"`   | `"matrix"`     | `"double"`    | ✅                     | guaranteed double |
+
+---
+
+# 7. Summary
+
+✅ **In plain words:**
+
+> Converting to a *double matrix* means turning all your variables into a simple table of numbers where each value is stored as an 8-byte floating-point number.
+> This format is exactly what the causal forest’s C++ engine expects - fast, stable, and universal.
+
+---
