@@ -11,7 +11,7 @@
 
 <meta name="author" content="Yiyang Gao" />
 
-<meta name="date" content="2025-10-16" />
+<meta name="date" content="2025-10-17" />
 
 <title>Part I: ACIC 2022 Track 1 (Patient–Year) Data Structure + Merge and Readable Strata Guide</title>
 
@@ -1624,7 +1624,7 @@ display: none;
 <h1 class="title toc-ignore">Part I: ACIC 2022 Track 1 (Patient–Year)
 Data Structure + Merge and Readable Strata Guide</h1>
 <h4 class="author">Yiyang Gao</h4>
-<h4 class="date">2025-10-16</h4>
+<h4 class="date">2025-10-17</h4>
 
 </div>
 
@@ -1758,10 +1758,10 @@ assignment) longitudinal RCT.</p>
 <div id="data-structure-overview" class="section level1">
 <h1>(2) Data Structure Overview</h1>
 <pre class="r"><code># ---- File paths (use No.52 replicate as the example) ----
-patient &lt;- read_csv(&quot;/Users/constanceko/Desktop/MAIHDA_/ACIC_track1a_20220404/patient/acic_patient_0052.csv&quot;)
-patient_year &lt;- read_csv(&quot;/Users/constanceko/Desktop/MAIHDA_/ACIC_track1a_20220404/patient_year/acic_patient_year_0052.csv&quot;)
-practice &lt;- read_csv(&quot;/Users/constanceko/Desktop/MAIHDA_/ACIC_track1a_20220404/practice/acic_practice_0052.csv&quot;)
-practice_year &lt;- read_csv(&quot;/Users/constanceko/Desktop/MAIHDA_/ACIC_track1a_20220404/practice_year/acic_practice_year_0052.csv&quot;)
+patient &lt;- read_csv(&quot;C:/Users/ed1yg/OneDrive/MAIHDA_//ACIC_track1a_20220404/patient/acic_patient_0052.csv&quot;)
+patient_year &lt;- read_csv(&quot;C:/Users/ed1yg/OneDrive/MAIHDA_//ACIC_track1a_20220404/patient_year/acic_patient_year_0052.csv&quot;)
+practice &lt;- read_csv(&quot;C:/Users/ed1yg/OneDrive/MAIHDA_//ACIC_track1a_20220404/practice/acic_practice_0052.csv&quot;)
+practice_year &lt;- read_csv(&quot;C:/Users/ed1yg/OneDrive/MAIHDA_/ACIC_track1a_20220404/practice_year/acic_practice_year_0052.csv&quot;)
 
 names(patient)</code></pre>
 <pre><code>## [1] &quot;id.patient&quot;  &quot;id.practice&quot; &quot;V1&quot;          &quot;V2&quot;          &quot;V3&quot;         
@@ -2576,10 +2576,10 @@ Deprivation: Mid | White</td>
 </tbody>
 </table>
 <pre class="r"><code># save the analysis-ready data for future use
-write.csv(df, &quot;/Users/constanceko/Desktop/MAIHDA_/replicate_52.csv&quot;)</code></pre>
+write.csv(df, &quot;C:/Users/ed1yg/OneDrive/MAIHDA_/replicate_52.csv&quot;)</code></pre>
 <p><strong>Common pitfalls</strong></p>
 <ul>
-<li>Do <strong>not</strong> mix the two <code>Y</code>s — use
+<li>Do <strong>not</strong> mix the two <code>Y</code>s - use
 <strong>patient <code>Y</code></strong> for Track-1.</li>
 <li>Join keys must align: <code>id.patient</code>,
 <code>id.practice</code>, <code>year</code>.</li>

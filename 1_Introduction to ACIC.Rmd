@@ -8,7 +8,7 @@ output:
     toc_depth: 3
     df_print: paged
 params:
-  data_dir: "/Users/constanceko/Desktop/MAIHDA_/ACIC_track1a_20220404"
+  data_dir: "C:/Users/ed1yg/OneDrive/MAIHDA_/ACIC_track1a_20220404"
   replicate_id: "0052"
 header-includes:
   - \usepackage{booktabs}
@@ -81,10 +81,10 @@ This yields a **cluster-randomised** (practice-level assignment) longitudinal RC
 
 ````{r preview-first-rows}
 # ---- File paths (use No.52 replicate as the example) ----
-patient <- read_csv("/Users/constanceko/Desktop/MAIHDA_/ACIC_track1a_20220404/patient/acic_patient_0052.csv")
-patient_year <- read_csv("/Users/constanceko/Desktop/MAIHDA_/ACIC_track1a_20220404/patient_year/acic_patient_year_0052.csv")
-practice <- read_csv("/Users/constanceko/Desktop/MAIHDA_/ACIC_track1a_20220404/practice/acic_practice_0052.csv")
-practice_year <- read_csv("/Users/constanceko/Desktop/MAIHDA_/ACIC_track1a_20220404/practice_year/acic_practice_year_0052.csv")
+patient <- read_csv("C:/Users/ed1yg/OneDrive/MAIHDA_//ACIC_track1a_20220404/patient/acic_patient_0052.csv")
+patient_year <- read_csv("C:/Users/ed1yg/OneDrive/MAIHDA_//ACIC_track1a_20220404/patient_year/acic_patient_year_0052.csv")
+practice <- read_csv("C:/Users/ed1yg/OneDrive/MAIHDA_//ACIC_track1a_20220404/practice/acic_practice_0052.csv")
+practice_year <- read_csv("C:/Users/ed1yg/OneDrive/MAIHDA_/ACIC_track1a_20220404/practice_year/acic_practice_year_0052.csv")
 
 names(patient)
 names(patient_year)
@@ -455,13 +455,13 @@ kable(
 )
 
 # save the analysis-ready data for future use
-write.csv(df, "/Users/constanceko/Desktop/MAIHDA_/replicate_52.csv")
+write.csv(df, "C:/Users/ed1yg/OneDrive/MAIHDA_/replicate_52.csv")
 ```
 
 
 **Common pitfalls**
 
-* Do **not** mix the two `Y`s — use **patient `Y`** for Track-1.
+* Do **not** mix the two `Y`s - use **patient `Y`** for Track-1.
 * Join keys must align: `id.patient`, `id.practice`, `year`.
 * Patients do not appear in every year; this is **by design** (ageing in/out, death), not missingness.
 
